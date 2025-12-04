@@ -62,13 +62,18 @@ type float struct {
 	Length int // max constraint for the axis
 	Pos    int // position in pixels of the handle
 	drag   gesture.Drag
+	click  gesture.Click
 }
 
 func (f *float) Layout(gtx layout.Context, axis layout.Axis, style HandleStyle) layout.Dimensions {
 	gtx.Constraints.Min = image.Point{}
 
-	var de *pointer.Event
-	hovered := false
+	var (
+		de       *pointer.Event
+		dragging bool
+		clicked  bool
+	)
+
 	for {
 		e, ok := f.drag.Update(gtx.Metric, gtx.Source, gesture.Axis(axis))
 		if !ok {
@@ -76,11 +81,26 @@ func (f *float) Layout(gtx layout.Context, axis layout.Axis, style HandleStyle) 
 		}
 		if e.Kind == pointer.Drag {
 			de = &e
-			hovered = true
+			dragging = true
 		} else {
-			if hovered {
-				hovered = false
+			if dragging {
+				dragging = false
 			}
+		}
+	}
+
+	for {
+		ev, ok := f.click.Update(gtx.Source)
+		if !ok {
+			break
+		}
+		switch ev.Kind {
+		case gesture.KindClick:
+			clicked = true
+		case gesture.KindPress:
+			clicked = true
+		case gesture.KindCancel:
+			clicked = false
 		}
 	}
 
@@ -92,7 +112,7 @@ func (f *float) Layout(gtx layout.Context, axis layout.Axis, style HandleStyle) 
 		f.Pos += int(xy)
 	}
 
-	dims := handleLayout(gtx, axis, style, hovered)
+	dims := handleLayout(gtx, axis, style, f.click.Hovered() || dragging || clicked)
 	// Clamp the handle position, leaving it always visible.
 	if f.Pos < 0 {
 		f.Pos = 0
@@ -103,6 +123,7 @@ func (f *float) Layout(gtx layout.Context, axis layout.Axis, style HandleStyle) 
 	rect := image.Rectangle{Max: dims.Size}
 	defer clip.Rect(rect).Push(gtx.Ops).Pop()
 	f.drag.Add(gtx.Ops)
+	f.click.Add(gtx.Ops)
 	cursor := pointer.CursorRowResize
 	if axis == layout.Horizontal {
 		cursor = pointer.CursorColResize
