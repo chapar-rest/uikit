@@ -1,11 +1,16 @@
 package treeview
 
 import (
+	"fmt"
 	"image"
+	"io"
+	"log"
+	"strings"
 
 	"gioui.org/gesture"
 	"gioui.org/io/event"
 	"gioui.org/io/pointer"
+	"gioui.org/io/transfer"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
@@ -16,6 +21,11 @@ import (
 	"github.com/chapar-rest/uikit/colors"
 	"github.com/chapar-rest/uikit/icons"
 	"github.com/chapar-rest/uikit/theme"
+)
+
+const (
+	mimeText = "application/json"
+	NodeMIME = "chapar-uikit/treeview/node"
 )
 
 type Node struct {
@@ -33,6 +43,12 @@ type Node struct {
 	click gesture.Click
 
 	paddingLeft unit.Dp
+
+	draggable widget.Draggable
+	// entered and dnsInited are for Drag and Drop op.
+	entered   bool
+	dndInited bool
+	reader    *strings.Reader
 }
 
 func NewNode(id string, w layout.Widget) *Node {
@@ -49,12 +65,116 @@ func NewNode(id string, w layout.Widget) *Node {
 	}
 }
 
+func (n *Node) Update(gtx layout.Context) {
+	if n.reader == nil || n.reader.Len() <= 0 {
+		n.reader = strings.NewReader(n.ID)
+	}
+
+	filters := []event.Filter{
+		transfer.TargetFilter{Target: n, Type: mimeText},
+	}
+	if len(n.Children) > 0 {
+		filters = append(filters,
+			// For DnD. This ensures only dir can be dragged and dropped to.
+			transfer.TargetFilter{Target: n, Type: NodeMIME},
+			// Detect if pointer is inside of the dir item, so we can highlight it when dropping items to it.
+			pointer.Filter{Target: n, Kinds: pointer.Enter | pointer.Leave},
+		)
+	}
+
+	for {
+		ke, ok := gtx.Event(filters...)
+		if !ok {
+			break
+		}
+		switch event := ke.(type) {
+		case pointer.Event:
+			switch event.Kind {
+			case pointer.Enter:
+				n.entered = true
+			case pointer.Leave:
+				n.entered = false
+			}
+		case transfer.InitiateEvent:
+			n.dndInited = true
+		case transfer.CancelEvent:
+			n.dndInited = false
+			n.entered = false
+		case transfer.DataEvent:
+			// read the clipboard content:
+			reader := event.Open()
+			defer reader.Close()
+			content, err := io.ReadAll(reader)
+			if err != nil {
+				log.Println("error reading clipboard content:", err)
+				continue
+			}
+			defer gtx.Execute(op.InvalidateCmd{})
+			switch event.Type {
+			case NodeMIME:
+				// Origin of transfer.OfferCmd is kept by gio
+				source, isFromNode := reader.(*Node)
+				if !isFromNode {
+					break
+				}
+				if source == n || source.Parent == n {
+					break
+				}
+				fmt.Println("Dropped from:", string(content))
+				fmt.Println("Dropped to:", n.ID)
+			}
+		}
+	}
+
+	for {
+		ev, ok := n.click.Update(gtx.Source)
+		if !ok {
+			break
+		}
+		switch ev.Kind {
+		case gesture.KindClick:
+			// TODO: make it a configurable option on treeview component.
+			n.discloser.ToggleVisibility(gtx.Now)
+		}
+	}
+
+	if n.draggable.Type == "" {
+		n.draggable.Type = NodeMIME
+	}
+
+	if m, ok := n.draggable.Update(gtx); ok {
+		n.draggable.Offer(gtx, m, n)
+	}
+}
+
+func (n *Node) Read(p []byte) (int, error) {
+	return n.reader.Read(p)
+}
+
+func (n *Node) Close() error {
+	return nil
+}
+
 func (n *Node) Layout(gtx layout.Context, theme *theme.Theme) layout.Dimensions {
-	var dims layout.Dimensions
+	n.Update(gtx)
+	c := op.Record(gtx.Ops)
+	dims := n.layout(gtx, theme)
+	call := c.Stop()
+	defer pointer.PassOp{}.Push(gtx.Ops).Pop()
+
+	call.Add(gtx.Ops)
+	return dims
+}
+
+func (n *Node) droppable() bool {
+	return n.entered && n.dndInited && !n.draggable.Dragging()
+}
+
+func (n *Node) layout(gtx layout.Context, theme *theme.Theme) layout.Dimensions {
 	if len(n.Children) == 0 {
-		dims = n.rootLayout(gtx, false, theme)
+		return n.rootLayout(gtx, false, theme)
 	} else {
-		dims = Discloser(&n.discloser).Layout(gtx,
+		return Discloser(&n.discloser).Layout(gtx,
 			func(gtx layout.Context) layout.Dimensions {
 				return n.rootLayout(gtx, true, theme)
 			},
@@ -63,6 +183,43 @@ func (n *Node) Layout(gtx layout.Context, theme *theme.Theme) layout.Dimensions 
 			},
 		)
 	}
+}
+
+func (n *Node) draggeBox(gtx layout.Context, theme *theme.Theme) layout.Dimensions {
+	if !n.draggable.Dragging() {
+		return layout.Dimensions{}
+	}
+
+	offset := n.draggable.Pos()
+	if offset.Round().X == 0 && offset.Round().Y == 0 {
+		return layout.Dimensions{}
+	}
+
+	macro := op.Record(gtx.Ops)
+	dims := func(gtx layout.Context) layout.Dimensions {
+		return widget.Border{
+			Color:        theme.Base.SurfaceHighlight,
+			Width:        unit.Dp(1),
+			CornerRadius: unit.Dp(8),
+		}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			return layout.Inset{
+				Top:    unit.Dp(4),
+				Bottom: unit.Dp(4),
+				Left:   unit.Dp(8),
+				Right:  unit.Dp(8),
+			}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				lb := material.Label(theme.Material(), unit.Sp(16), n.ID)
+				return lb.Layout(gtx)
+			})
+		})
+	}(gtx)
+	call := macro.Stop()
+
+	defer clip.UniformRRect(image.Rectangle{Max: dims.Size}, gtx.Dp(unit.Dp(8))).Push(gtx.Ops).Pop()
+	paint.ColorOp{Color: theme.Base.SurfaceHighlight}.Add(gtx.Ops)
+	paint.PaintOp{}.Add(gtx.Ops)
+	defer paint.PushOpacity(gtx.Ops, 0.8).Pop()
+	call.Add(gtx.Ops)
 
 	return dims
 }
@@ -72,19 +229,8 @@ func (n *Node) hasParent() bool {
 }
 
 func (n *Node) rootLayout(gtx layout.Context, withControl bool, theme *theme.Theme) layout.Dimensions {
-	for {
-		ev, ok := n.click.Update(gtx.Source)
-		if !ok {
-			break
-		}
-		switch ev.Kind {
-		case gesture.KindClick:
-			n.discloser.ToggleVisibility(gtx.Now)
-		}
-	}
-
 	bgColor, hoverBgColor := getBkColor(theme)
-	if n.click.Hovered() {
+	if n.click.Hovered() || n.droppable() {
 		bgColor = hoverBgColor
 	}
 
@@ -125,8 +271,15 @@ func (n *Node) rootLayout(gtx layout.Context, withControl bool, theme *theme.The
 	n.click.Add(gtx.Ops)
 	paint.Fill(gtx.Ops, bgColor)
 
-	call.Add(gtx.Ops)
-	return dims
+	return n.draggable.Layout(gtx,
+		func(gtx layout.Context) layout.Dimensions {
+			call.Add(gtx.Ops)
+			return dims
+		},
+		func(gtx layout.Context) layout.Dimensions {
+			return n.draggeBox(gtx, theme)
+		},
+	)
 }
 
 func (n *Node) controlLayout(gtx layout.Context) layout.Dimensions {
