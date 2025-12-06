@@ -3,8 +3,9 @@ package main
 import (
 	"fmt"
 	"log"
-	"math/rand"
 	"os"
+	"path/filepath"
+	"slices"
 
 	"gioui.org/app"
 	"gioui.org/layout"
@@ -45,7 +46,7 @@ func loop(w *app.Window) error {
 				HoverColor: th.Base.Secondary,
 			},
 		},
-		tree:  buildMockTreeData(th),
+		tree:  buildFileTree(th),
 		theme: th,
 	}
 
@@ -84,19 +85,23 @@ func (s *appState) appLayout(gtx layout.Context, th *material.Theme) {
 	)
 }
 
-func buildMockTreeData(th *theme.Theme) *treeview.Tree {
-	fmt.Println("building mock tree data")
+func buildFileTree(th *theme.Theme) *treeview.Tree {
 	tree := treeview.NewTree()
 
-	// Allow enough nodes for 10 root nodes plus their children
-	maxNodes := 50
-	nodeCount := 0
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		fmt.Printf("Error reading directory: %v\n", err)
+		return tree
+	}
 
-	// Always create exactly 10 root nodes
-	numTopLevel := 10
+	var ignoreList = []string{".git", ".idea", ".vscode", ".DS_Store", ".env"}
 
-	for i := 0; i < numTopLevel; i++ {
-		node := buildNode(th, fmt.Sprintf("node%d", i), 0, &nodeCount, maxNodes)
+	for _, entry := range entries {
+		if slices.Contains(ignoreList, entry.Name()) {
+			continue
+		}
+
+		node := buildFileNode(th, entry, ".")
 		if node != nil {
 			tree.Insert(node)
 		}
@@ -105,29 +110,23 @@ func buildMockTreeData(th *theme.Theme) *treeview.Tree {
 	return tree
 }
 
-func buildNode(th *theme.Theme, name string, depth int, nodeCount *int, maxNodes int) *treeview.Node {
-	// Check if we've reached max nodes or max depth
-	if *nodeCount >= maxNodes || depth >= 5 {
-		return nil
-	}
+func buildFileNode(th *theme.Theme, entry os.DirEntry, parentPath string) *treeview.Node {
+	name := entry.Name()
+	fullPath := filepath.Join(parentPath, name)
 
-	*nodeCount++
-	node := treeview.NewNode(name, func(gtx layout.Context) layout.Dimensions {
+	node := treeview.NewNode(fullPath, func(gtx layout.Context) layout.Dimensions {
 		return material.Label(th.Material(), unit.Sp(16), name).Layout(gtx)
 	})
 
-	// Randomly decide if this node should have children (70% chance)
-	shouldHaveChildren := rand.Intn(100) < 70 && depth < 5 && *nodeCount < maxNodes
-
-	if shouldHaveChildren {
-		// Randomly decide how many children (1-3)
-		numChildren := rand.Intn(3) + 1
-
-		for i := 0; i < numChildren && *nodeCount < maxNodes; i++ {
-			childName := fmt.Sprintf("%s-child%d", name, i)
-			child := buildNode(th, childName, depth+1, nodeCount, maxNodes)
-			if child != nil {
-				node.AddChild(child)
+	// If it's a directory, recursively add its contents as children
+	if entry.IsDir() {
+		dirEntries, err := os.ReadDir(fullPath)
+		if err == nil {
+			for _, childEntry := range dirEntries {
+				childNode := buildFileNode(th, childEntry, fullPath)
+				if childNode != nil {
+					node.AddChild(childNode)
+				}
 			}
 		}
 	}

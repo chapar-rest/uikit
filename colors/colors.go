@@ -3,6 +3,7 @@ package colors
 import (
 	"fmt"
 	"image/color"
+	"strings"
 )
 
 var (
@@ -30,6 +31,11 @@ var (
 )
 
 func FromHex(hex string) color.NRGBA {
+	hex = strings.TrimPrefix(hex, "#")
+	if len(hex) != 6 {
+		panic("hex must be 6 characters")
+	}
+
 	r, g, b, a := uint8(0), uint8(0), uint8(0), uint8(255)
 	if _, err := fmt.Sscanf(hex, "%02x%02x%02x", &r, &g, &b); err != nil {
 		panic(err)
