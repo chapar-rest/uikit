@@ -15,6 +15,7 @@ import (
 	"gioui.org/widget/material"
 	"github.com/chapar-rest/uikit/colors"
 	"github.com/chapar-rest/uikit/icons"
+	"github.com/chapar-rest/uikit/theme"
 )
 
 type Node struct {
@@ -30,6 +31,8 @@ type Node struct {
 	discloser DiscloserState
 
 	click gesture.Click
+
+	paddingLeft unit.Dp
 }
 
 func NewNode(id string, w layout.Widget) *Node {
@@ -42,19 +45,18 @@ func NewNode(id string, w layout.Widget) *Node {
 				Axis: layout.Vertical,
 			},
 		},
+		paddingLeft: unit.Dp(8),
 	}
 }
 
-func (n *Node) Layout(gtx layout.Context) layout.Dimensions {
-	theme := material.NewTheme()
-
+func (n *Node) Layout(gtx layout.Context, theme *theme.Theme) layout.Dimensions {
 	var dims layout.Dimensions
 	if len(n.Children) == 0 {
-		dims = n.rootLayout(gtx, false)
+		dims = n.rootLayout(gtx, false, theme)
 	} else {
-		dims = Discloser(theme, &n.discloser).Layout(gtx,
+		dims = Discloser(&n.discloser).Layout(gtx,
 			func(gtx layout.Context) layout.Dimensions {
-				return n.rootLayout(gtx, true)
+				return n.rootLayout(gtx, true, theme)
 			},
 			func(gtx layout.Context) layout.Dimensions {
 				return n.detailLayout(gtx, theme)
@@ -69,7 +71,7 @@ func (n *Node) hasParent() bool {
 	return n.Parent != nil
 }
 
-func (n *Node) rootLayout(gtx layout.Context, withDiscloser bool) layout.Dimensions {
+func (n *Node) rootLayout(gtx layout.Context, withControl bool, theme *theme.Theme) layout.Dimensions {
 	for {
 		ev, ok := n.click.Update(gtx.Source)
 		if !ok {
@@ -81,21 +83,17 @@ func (n *Node) rootLayout(gtx layout.Context, withDiscloser bool) layout.Dimensi
 		}
 	}
 
-	borderColor := colors.White
+	bgColor, hoverBgColor := getBkColor(theme)
 	if n.click.Hovered() {
-		borderColor = colors.LightGray
+		bgColor = hoverBgColor
 	}
 
-	border := widget.Border{
-		Color:        borderColor,
-		Width:        unit.Dp(0),
-		CornerRadius: unit.Dp(1),
-	}
-
-	paddingLeft := unit.Dp(0)
+	paddingLeft := unit.Dp(8)
 	if n.hasParent() {
-		paddingLeft = unit.Dp(16)
+		paddingLeft = unit.Dp(16) + n.Parent.paddingLeft
 	}
+
+	n.paddingLeft = paddingLeft
 
 	c := op.Record(gtx.Ops)
 	dims := layout.Inset{
@@ -107,7 +105,7 @@ func (n *Node) rootLayout(gtx layout.Context, withDiscloser bool) layout.Dimensi
 			Alignment: layout.Middle,
 		}.Layout(gtx,
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				if withDiscloser {
+				if withControl {
 					return n.discloser.Clickable.Layout(gtx, n.controlLayout)
 				}
 				return layout.Dimensions{Size: image.Point{X: gtx.Dp(16), Y: gtx.Dp(16)}}
@@ -125,12 +123,10 @@ func (n *Node) rootLayout(gtx layout.Context, withDiscloser bool) layout.Dimensi
 	}).Push(gtx.Ops).Pop()
 	event.Op(gtx.Ops, n)
 	n.click.Add(gtx.Ops)
-	paint.Fill(gtx.Ops, borderColor)
+	paint.Fill(gtx.Ops, bgColor)
 
-	return border.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		call.Add(gtx.Ops)
-		return dims
-	})
+	call.Add(gtx.Ops)
+	return dims
 }
 
 func (n *Node) controlLayout(gtx layout.Context) layout.Dimensions {
@@ -146,17 +142,19 @@ func (n *Node) controlLayout(gtx layout.Context) layout.Dimensions {
 	})
 }
 
-func (n *Node) detailLayout(gtx layout.Context, theme *material.Theme) layout.Dimensions {
-	listStyle := material.List(theme, n.childrenList)
+func (n *Node) detailLayout(gtx layout.Context, theme *theme.Theme) layout.Dimensions {
+	listStyle := material.List(theme.Material(), n.childrenList)
+	// hide the detail component scrollbar
 	listStyle.ScrollbarStyle.Indicator.MinorWidth = 0
 	listStyle.ScrollbarStyle.Track.MinorPadding = 0
 	listStyle.ScrollbarStyle.Track.MajorPadding = 0
 	return listStyle.Layout(gtx, len(n.Children), func(gtx layout.Context, i int) layout.Dimensions {
-		return n.Children[i].Layout(gtx)
+		return n.Children[i].Layout(gtx, theme)
 	})
 }
 
 func (n *Node) AddChild(child *Node) {
+	child.Parent = n
 	n.Children = append(n.Children, child)
 }
 

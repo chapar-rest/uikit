@@ -9,7 +9,6 @@ import (
 	"gioui.org/op"
 	"gioui.org/op/clip"
 	"gioui.org/widget"
-	"gioui.org/widget/material"
 	"gioui.org/x/component"
 )
 
@@ -41,7 +40,7 @@ type DiscloserStyle struct {
 }
 
 // Discloser configures a discloser from the provided theme and state.
-func Discloser(th *material.Theme, state *DiscloserState) DiscloserStyle {
+func Discloser(state *DiscloserState) DiscloserStyle {
 	return DiscloserStyle{
 		DiscloserState: state,
 		Alignment:      layout.Middle,

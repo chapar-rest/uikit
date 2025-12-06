@@ -4,23 +4,28 @@ import (
 	"image/color"
 
 	"gioui.org/layout"
+	"gioui.org/op/paint"
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
+	"github.com/chapar-rest/uikit/theme"
 )
 
 type Tree struct {
 	nodes        []*Node
 	childrenList *widget.List
 
-	NodeStyle NodeStyle
+	Style TreeStyle
+}
+
+type TreeStyle struct {
+	BackgroundColor color.NRGBA
+	NodeStyle       NodeStyle
 }
 
 type NodeStyle struct {
-	BorderOnHover bool
-	BorderColor   color.NRGBA
-	BorderWidth   unit.Dp
-	BorderRadius  unit.Dp
+	BackgroundColor      color.NRGBA
+	HoverBackgroundColor color.NRGBA
 }
 
 func NewTree() *Tree {
@@ -30,12 +35,6 @@ func NewTree() *Tree {
 			List: layout.List{
 				Axis: layout.Vertical,
 			},
-		},
-		NodeStyle: NodeStyle{
-			BorderOnHover: true,
-			BorderColor:   color.NRGBA{0, 0, 0, 0},
-			BorderWidth:   unit.Dp(1),
-			BorderRadius:  unit.Dp(2),
 		},
 	}
 }
@@ -73,9 +72,43 @@ func (t *Tree) Traverse(callback func(node *Node)) {
 	}
 }
 
-func (t *Tree) Layout(gtx layout.Context) layout.Dimensions {
-	theme := material.NewTheme()
-	return material.List(theme, t.childrenList).Layout(gtx, len(t.nodes), func(gtx layout.Context, i int) layout.Dimensions {
-		return t.nodes[i].Layout(gtx)
+func (t *Tree) Layout(gtx layout.Context, theme *theme.Theme) layout.Dimensions {
+	bgColor, _ := getBkColor(theme)
+	// paint the background of the tree with the theme's background color
+	paint.Fill(gtx.Ops, bgColor)
+
+	lst := material.List(theme.Material(), t.childrenList)
+	lst.ScrollbarStyle = makeScrollbarStyle(theme, lst.ScrollbarStyle.Scrollbar)
+
+	return lst.Layout(gtx, len(t.nodes), func(gtx layout.Context, i int) layout.Dimensions {
+		return t.nodes[i].Layout(gtx, theme)
 	})
+}
+
+func getBkColor(theme *theme.Theme) (color.NRGBA, color.NRGBA) {
+	// is there a treeview component?
+	treeview, ok := theme.Components["treeview"]
+	if ok {
+		return treeview.Surface, theme.Base.SurfaceHighlight
+	}
+	return theme.Base.Surface, theme.Base.SurfaceHighlight
+}
+
+func makeScrollbarStyle(theme *theme.Theme, scrollbar *widget.Scrollbar) material.ScrollbarStyle {
+	bkColor, _ := getBkColor(theme)
+
+	return material.ScrollbarStyle{
+		Scrollbar: scrollbar,
+		Indicator: material.ScrollIndicatorStyle{
+			Color:        theme.Base.Secondary,
+			HoverColor:   theme.Base.Secondary,
+			CornerRadius: unit.Dp(0),
+			MinorWidth:   unit.Dp(8),
+		},
+		Track: material.ScrollTrackStyle{
+			Color:        bkColor,
+			MajorPadding: unit.Dp(2),
+			MinorPadding: unit.Dp(2),
+		},
+	}
 }
