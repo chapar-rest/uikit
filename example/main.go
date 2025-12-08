@@ -115,7 +115,7 @@ func buildFileNode(th *theme.Theme, entry os.DirEntry, parentPath string) *treev
 	fullPath := filepath.Join(parentPath, name)
 
 	node := treeview.NewNode(fullPath, func(gtx layout.Context) layout.Dimensions {
-		return material.Label(th.Material(), unit.Sp(16), name).Layout(gtx)
+		return material.Label(th.Material(), unit.Sp(14), name).Layout(gtx)
 	})
 
 	// If it's a directory, recursively add its contents as children

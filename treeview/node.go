@@ -35,6 +35,8 @@ type Node struct {
 	entered   bool
 	dndInited bool
 	reader    *strings.Reader
+
+	OnDropConfirmFunc func(source *Node, target *Node) bool
 }
 
 func NewNode(id string, w layout.Widget) *Node {

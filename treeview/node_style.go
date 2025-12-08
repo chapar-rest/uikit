@@ -1,7 +1,6 @@
 package treeview
 
 import (
-	"fmt"
 	"image"
 	"io"
 	"log"
@@ -18,7 +17,6 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
-	"github.com/chapar-rest/uikit/colors"
 	"github.com/chapar-rest/uikit/icons"
 	"github.com/chapar-rest/uikit/theme"
 )
@@ -62,7 +60,7 @@ func (n *Node) Update(gtx layout.Context) {
 			// read the clipboard content:
 			reader := event.Open()
 			defer reader.Close()
-			content, err := io.ReadAll(reader)
+			_, err := io.ReadAll(reader)
 			if err != nil {
 				log.Println("error reading clipboard content:", err)
 				continue
@@ -70,7 +68,6 @@ func (n *Node) Update(gtx layout.Context) {
 			defer gtx.Execute(op.InvalidateCmd{})
 			switch event.Type {
 			case NodeMIME:
-				// Origin of transfer.OfferCmd is kept by gio
 				source, isFromNode := reader.(*Node)
 				if !isFromNode {
 					break
@@ -78,8 +75,11 @@ func (n *Node) Update(gtx layout.Context) {
 				if source == n || source.Parent == n {
 					break
 				}
-				fmt.Println("Dropped from:", string(content))
-				fmt.Println("Dropped to:", n.ID)
+				if n.OnDropConfirmFunc != nil {
+					if !n.OnDropConfirmFunc(source, n) {
+						break
+					}
+				}
 			}
 		}
 	}
@@ -166,14 +166,13 @@ func (n *Node) draggeBox(gtx layout.Context, theme *theme.Theme) layout.Dimensio
 				Left:   unit.Dp(8),
 				Right:  unit.Dp(8),
 			}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				lb := material.Label(theme.Material(), unit.Sp(16), n.ID)
-				return lb.Layout(gtx)
+				return n.Widget(gtx)
 			})
 		})
 	}(gtx)
 	call := macro.Stop()
 
-	defer clip.UniformRRect(image.Rectangle{Max: dims.Size}, gtx.Dp(unit.Dp(8))).Push(gtx.Ops).Pop()
+	defer clip.UniformRRect(image.Rectangle{Max: dims.Size}, gtx.Dp(unit.Dp(4))).Push(gtx.Ops).Pop()
 	paint.ColorOp{Color: theme.Base.SurfaceHighlight}.Add(gtx.Ops)
 	paint.PaintOp{}.Add(gtx.Ops)
 	defer paint.PushOpacity(gtx.Ops, 0.8).Pop()
@@ -192,9 +191,13 @@ func (n *Node) rootLayout(gtx layout.Context, withControl bool, theme *theme.The
 		bgColor = hoverBgColor
 	}
 
+	if n.droppable() && withControl && !n.discloser.Visible() {
+		n.discloser.ToggleVisibility(gtx.Now)
+	}
+
 	paddingLeft := unit.Dp(8)
 	if n.hasParent() {
-		paddingLeft = unit.Dp(16) + n.Parent.paddingLeft
+		paddingLeft = unit.Dp(14) + n.Parent.paddingLeft
 	}
 
 	n.paddingLeft = paddingLeft
@@ -210,7 +213,9 @@ func (n *Node) rootLayout(gtx layout.Context, withControl bool, theme *theme.The
 		}.Layout(gtx,
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				if withControl {
-					return n.discloser.Clickable.Layout(gtx, n.controlLayout)
+					return n.discloser.Clickable.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						return n.controlLayout(gtx, theme)
+					})
 				}
 				return layout.Dimensions{Size: image.Point{X: gtx.Dp(16), Y: gtx.Dp(16)}}
 			}),
@@ -240,16 +245,18 @@ func (n *Node) rootLayout(gtx layout.Context, withControl bool, theme *theme.The
 	)
 }
 
-func (n *Node) controlLayout(gtx layout.Context) layout.Dimensions {
+func (n *Node) controlLayout(gtx layout.Context, theme *theme.Theme) layout.Dimensions {
 	if len(n.Children) == 0 {
 		return layout.Dimensions{}
 	}
-	return layout.Inset{}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+	return layout.Inset{
+		Right: unit.Dp(4),
+	}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		gtx.Constraints.Max.X = gtx.Dp(16)
 		if !n.discloser.Visible() {
-			return icons.ChevronRight.Layout(gtx, colors.DarkGray)
+			return icons.ChevronRight.Layout(gtx, theme.Base.Text)
 		}
-		return icons.ChevronDown.Layout(gtx, colors.DarkGray)
+		return icons.ChevronDown.Layout(gtx, theme.Base.Text)
 	})
 }
 
