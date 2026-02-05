@@ -84,10 +84,6 @@ type fileView struct {
 	Layout func(gtx layout.Context, th *theme.Theme) layout.Dimensions
 }
 
-func (s *appState) onTabClose(tab *tabs.Tab) bool {
-	return true
-}
-
 func (s *appState) onFileNodeClick(node *treeview.Node) {
 	// node id is the full path of the file
 	path := node.ID
@@ -102,7 +98,11 @@ func (s *appState) onFileNodeClick(node *treeview.Node) {
 		return lb.Layout(gtx)
 	})
 
-	t.OnCloseFunc = s.onTabClose
+	// When the tab is closed, remove the path from openFiles so clicking the tree node again can open a new tab.
+	t.OnCloseFunc = func(tab *tabs.Tab) bool {
+		delete(s.openFiles, path)
+		return true
+	}
 
 	t.State = tabs.TabStateClean
 	s.tabitems.AddTab(t)

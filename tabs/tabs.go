@@ -81,7 +81,13 @@ func (t *Tabs) Layout(gtx layout.Context, th *theme.Theme) layout.Dimensions {
 }
 
 func (t *Tabs) AddTab(tab *Tab) {
+	// Unselect the current tab if any
+	if t.currentView >= 0 && t.currentView < len(t.tabs) {
+		t.tabs[t.currentView].selected = false
+	}
 	t.tabs = append(t.tabs, tab)
+	t.currentView = len(t.tabs) - 1
+	tab.selected = true
 }
 
 func (t *Tab) Update(gtx layout.Context) bool {
@@ -294,27 +300,48 @@ func (t *Tab) layoutBackground(gtx layout.Context, th *theme.Theme) layout.Dimen
 }
 
 func (t *Tabs) Update(gtx layout.Context) {
+	// First pass: process events and collect indices of closed tabs.
+	// We must not delete while ranging; deleting shifts indices and skips items.
+	var closedIndices []int
 	for idx, item := range t.tabs {
 		clicked := item.Update(gtx)
 
 		if item.closed {
-			t.tabs = slices.Delete(t.tabs, idx, 1)
+			closedIndices = append(closedIndices, idx)
 			continue
 		}
 
 		if clicked {
 			// unselect last item
-			lastItem := t.tabs[t.currentView]
-			if lastItem != nil && idx != t.currentView {
-				lastItem.selected = false
+			if t.currentView >= 0 && t.currentView < len(t.tabs) {
+				lastItem := t.tabs[t.currentView]
+				if lastItem != nil && idx != t.currentView {
+					lastItem.selected = false
+				}
 			}
-
 			t.currentView = idx
 		}
 
 		if t.currentView == idx && !item.selected {
 			item.selected = true
 		}
+	}
 
+	// Delete closed tabs in reverse order so indices remain valid.
+	for i := len(closedIndices) - 1; i >= 0; i-- {
+		idx := closedIndices[i]
+		t.tabs = slices.Delete(t.tabs, idx, 1)
+		// Adjust currentView: if we removed the selected tab or one before it, clamp or decrement.
+		if idx < t.currentView {
+			t.currentView--
+		} else if idx == t.currentView {
+			// Selected tab was closed; stay on the same index (next tab slides in) or clamp to end.
+			if t.currentView >= len(t.tabs) {
+				t.currentView = len(t.tabs) - 1
+			}
+		}
+		if t.currentView < 0 {
+			t.currentView = 0
+		}
 	}
 }
