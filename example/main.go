@@ -49,6 +49,7 @@ func loop(w *app.Window) error {
 		},
 		theme:     th,
 		openFiles: make(map[string]fileView),
+		openTabs:  make(map[string]*tabs.Tab),
 	}
 	state.tree = state.buildFileTree(th)
 	state.tabitems = tabs.NewTabs()
@@ -76,6 +77,7 @@ type appState struct {
 	tabitems *tabs.Tabs
 
 	openFiles map[string]fileView
+	openTabs  map[string]*tabs.Tab // path -> tab, so we can select an already-open tab
 }
 
 type fileView struct {
@@ -88,6 +90,10 @@ func (s *appState) onFileNodeClick(node *treeview.Node) {
 	// node id is the full path of the file
 	path := node.ID
 	if _, ok := s.openFiles[path]; ok {
+		// File already has a tab; just select it
+		if tab := s.openTabs[path]; tab != nil {
+			s.tabitems.SelectTab(tab)
+		}
 		return
 	}
 
@@ -98,14 +104,16 @@ func (s *appState) onFileNodeClick(node *treeview.Node) {
 		return lb.Layout(gtx)
 	})
 
-	// When the tab is closed, remove the path from openFiles so clicking the tree node again can open a new tab.
+	// When the tab is closed, remove the path from openFiles and openTabs so clicking the tree node again can open a new tab.
 	t.OnCloseFunc = func(tab *tabs.Tab) bool {
 		delete(s.openFiles, path)
+		delete(s.openTabs, path)
 		return true
 	}
 
 	t.State = tabs.TabStateClean
 	s.tabitems.AddTab(t)
+	s.openTabs[path] = t
 }
 
 func (s *appState) appLayout(gtx layout.Context) {

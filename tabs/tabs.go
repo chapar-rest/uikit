@@ -90,6 +90,23 @@ func (t *Tabs) AddTab(tab *Tab) {
 	tab.selected = true
 }
 
+// SelectTab makes the given tab the selected one. It returns false if the tab is not in the list.
+func (t *Tabs) SelectTab(target *Tab) bool {
+	for idx, tab := range t.tabs {
+		if tab == target {
+			if t.currentView >= 0 && t.currentView < len(t.tabs) {
+				t.tabs[t.currentView].selected = false
+			}
+			t.currentView = idx
+			tab.selected = true
+			// make sure the scroll is at the end so the new tab is visible
+			t.list.ScrollTo(idx)
+			return true
+		}
+	}
+	return false
+}
+
 func (t *Tab) Update(gtx layout.Context) bool {
 	if t.closed {
 		return false
