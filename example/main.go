@@ -2,22 +2,35 @@ package main
 
 import (
 	"fmt"
+	"image/color"
 	"log"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"gioui.org/app"
+	"gioui.org/io/key"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/paint"
 	"gioui.org/unit"
 	"gioui.org/widget/material"
+	"github.com/alecthomas/chroma/v2"
+	"github.com/alecthomas/chroma/v2/lexers"
+	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/chapar-rest/uikit/split"
 	"github.com/chapar-rest/uikit/tabs"
 	"github.com/chapar-rest/uikit/theme"
 	"github.com/chapar-rest/uikit/theme/themes"
 	"github.com/chapar-rest/uikit/treeview"
+	"github.com/oligo/gvcode"
+	"github.com/oligo/gvcode/addons/completion"
+	gvcolor "github.com/oligo/gvcode/color"
+	"github.com/oligo/gvcode/textstyle/syntax"
+	wg "github.com/oligo/gvcode/widget"
 )
 
 func main() {
@@ -47,12 +60,17 @@ func loop(w *app.Window) error {
 				HoverColor: th.Base.Secondary,
 			},
 		},
-		theme:     th,
-		openFiles: make(map[string]fileView),
-		openTabs:  make(map[string]*tabs.Tab),
+		theme:       th,
+		openFiles:   make(map[string]fileView),
+		openTabs:    make(map[string]*tabs.Tab),
+		openPaths:   make([]string, 0),
+		tabToPath:   make(map[*tabs.Tab]string),
+		projectIndex: make([]string, 0),
+		memberIndex:  make(map[string][]string),
 	}
 	state.tree = state.buildFileTree(th)
 	state.tabitems = tabs.NewTabs()
+	state.buildProjectIndex()
 
 	var ops op.Ops
 	for {
@@ -76,21 +94,26 @@ type appState struct {
 
 	tabitems *tabs.Tabs
 
-	openFiles map[string]fileView
-	openTabs  map[string]*tabs.Tab // path -> tab, so we can select an already-open tab
+	openFiles    map[string]fileView
+	openTabs     map[string]*tabs.Tab
+	openPaths    []string             // path order matching tab order
+	tabToPath    map[*tabs.Tab]string // tab -> path for close callback
+	projectIndex []string             // unique identifiers from project files (for completion)
+	memberIndex  map[string][]string   // receiver -> members seen after "receiver." in project
 }
 
 type fileView struct {
-	Title  string
-	Path   string
-	Layout func(gtx layout.Context, th *theme.Theme) layout.Dimensions
+	Title           string
+	Path            string
+	Editor          *gvcode.Editor
+	OriginalContent string // content when file was opened (from disk)
+	OnChange        func(currentContent string) // called when editor content changes; pass ed.Text() to update dirty state
+	Layout          func(gtx layout.Context, th *theme.Theme) layout.Dimensions
 }
 
 func (s *appState) onFileNodeClick(node *treeview.Node) {
-	// node id is the full path of the file
 	path := node.ID
 	if _, ok := s.openFiles[path]; ok {
-		// File already has a tab; just select it
 		if tab := s.openTabs[path]; tab != nil {
 			s.tabitems.SelectTab(tab)
 		}
@@ -104,20 +127,25 @@ func (s *appState) onFileNodeClick(node *treeview.Node) {
 		return lb.Layout(gtx)
 	})
 
-	// When the tab is closed, remove the path from openFiles and openTabs so clicking the tree node again can open a new tab.
 	t.OnCloseFunc = func(tab *tabs.Tab) bool {
+		path := s.tabToPath[tab]
 		delete(s.openFiles, path)
 		delete(s.openTabs, path)
+		delete(s.tabToPath, tab)
+		if i := slices.Index(s.openPaths, path); i >= 0 {
+			s.openPaths = slices.Delete(s.openPaths, i, i+1)
+		}
 		return true
 	}
 
 	t.State = tabs.TabStateClean
 	s.tabitems.AddTab(t)
 	s.openTabs[path] = t
+	s.openPaths = append(s.openPaths, path)
+	s.tabToPath[t] = path
 }
 
 func (s *appState) appLayout(gtx layout.Context) {
-	// paint the background of the window with the theme's surface color
 	paint.Fill(gtx.Ops, s.theme.Base.Surface)
 
 	s.split.Layout(gtx,
@@ -125,7 +153,24 @@ func (s *appState) appLayout(gtx layout.Context) {
 			return s.tree.Layout(gtx, s.theme)
 		},
 		func(gtx layout.Context) layout.Dimensions {
-			return s.tabitems.Layout(gtx, s.theme)
+			return layout.Flex{
+				Axis: layout.Vertical,
+			}.Layout(gtx,
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return s.tabitems.Layout(gtx, s.theme)
+				}),
+				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+					if s.tabitems.CurrentView() < 0 || s.tabitems.CurrentView() >= len(s.openPaths) {
+						return layout.Dimensions{}
+					}
+					path := s.openPaths[s.tabitems.CurrentView()]
+					fv, ok := s.openFiles[path]
+					if !ok {
+						return layout.Dimensions{}
+					}
+					return fv.Layout(gtx, s.theme)
+				}),
+			)
 		},
 	)
 }
@@ -167,7 +212,6 @@ func (s *appState) buildFileNode(th *theme.Theme, entry os.DirEntry, parentPath 
 		s.onFileNodeClick(node)
 	}
 
-	// If it's a directory, recursively add its contents as children
 	if entry.IsDir() {
 		dirEntries, err := os.ReadDir(fullPath)
 		if err == nil {
@@ -183,12 +227,381 @@ func (s *appState) buildFileNode(th *theme.Theme, entry os.DirEntry, parentPath 
 	return node
 }
 
-func (s *appState) buildFileView(th *theme.Theme, path string) fileView {
-	return fileView{
-		Title: path,
-		Path:  path,
-		Layout: func(gtx layout.Context, th *theme.Theme) layout.Dimensions {
-			return material.Label(th.Material(), unit.Sp(14), path).Layout(gtx)
+var projectIndexIgnoreDirs = []string{".git", ".idea", ".vscode", "node_modules", "vendor"}
+
+// buildProjectIndex walks the project directory and indexes identifiers and "receiver.member" pairs for completion.
+func (s *appState) buildProjectIndex() {
+	seen := make(map[string]bool)
+	members := make(map[string]map[string]bool) // receiver -> set of members
+	filepath.WalkDir(".", func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if slices.Contains(projectIndexIgnoreDirs, d.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(path))
+		switch ext {
+		case ".go", ".mod", ".sum", ".txt", ".md", ".yaml", ".yml", ".json", ".toml":
+			// ok
+		default:
+			return nil
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		if len(content) > 512*1024 {
+			return nil
+		}
+		text := string(content)
+		for _, word := range extractIdentifiers(text) {
+			if len(word) >= 2 && len(word) <= 64 {
+				seen[word] = true
+			}
+		}
+		for receiver, list := range extractMemberPairs(text) {
+			if members[receiver] == nil {
+				members[receiver] = make(map[string]bool)
+			}
+			for _, m := range list {
+				if len(m) >= 1 && len(m) <= 64 {
+					members[receiver][m] = true
+				}
+			}
+		}
+		return nil
+	})
+	s.projectIndex = make([]string, 0, len(seen))
+	for w := range seen {
+		s.projectIndex = append(s.projectIndex, w)
+	}
+	slices.Sort(s.projectIndex)
+	for rec, set := range members {
+		list := make([]string, 0, len(set))
+		for m := range set {
+			list = append(list, m)
+		}
+		slices.Sort(list)
+		s.memberIndex[rec] = list
+	}
+}
+
+// extractMemberPairs returns receiver -> members seen after "receiver." in content.
+func extractMemberPairs(content string) map[string][]string {
+	out := make(map[string][]string)
+	runes := []rune(content)
+	i := 0
+	for i < len(runes) {
+		// find start of identifier
+		if !(unicode.IsLetter(runes[i]) || runes[i] == '_') {
+			i++
+			continue
+		}
+		start := i
+		for i < len(runes) && (unicode.IsLetter(runes[i]) || runes[i] == '_' || unicode.IsDigit(runes[i])) {
+			i++
+		}
+		receiver := string(runes[start:i])
+		if i < len(runes) && runes[i] == '.' {
+			i++ // consume '.'
+			if i < len(runes) && (unicode.IsLetter(runes[i]) || runes[i] == '_') {
+				mStart := i
+				for i < len(runes) && (unicode.IsLetter(runes[i]) || runes[i] == '_' || unicode.IsDigit(runes[i])) {
+					i++
+				}
+				member := string(runes[mStart:i])
+				if len(receiver) <= 64 && len(member) <= 64 {
+					out[receiver] = append(out[receiver], member)
+				}
+			}
+		}
+	}
+	return out
+}
+
+func extractIdentifiers(content string) []string {
+	var words []string
+	var buf []rune
+	for _, r := range content {
+		if unicode.IsLetter(r) || r == '_' || (len(buf) > 0 && (unicode.IsDigit(r) || unicode.IsLetter(r) || r == '_')) {
+			buf = append(buf, r)
+		} else {
+			if len(buf) > 0 {
+				words = append(words, string(buf))
+				buf = buf[:0]
+			}
+		}
+	}
+	if len(buf) > 0 {
+		words = append(words, string(buf))
+	}
+	return words
+}
+
+// projectCompletor suggests completions from the project index and member index (after ".").
+type projectCompletor struct {
+	editor      *gvcode.Editor
+	index       []string
+	memberIndex map[string][]string
+}
+
+func isSymbolSeparator(ch rune) bool {
+	return !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_')
+}
+
+func (c *projectCompletor) Trigger() gvcode.Trigger {
+	return gvcode.Trigger{
+		Characters: []string{"."},
+		KeyBinding: struct {
+			Name      key.Name
+			Modifiers key.Modifiers
+		}{
+			Name: key.NameSpace, Modifiers: key.ModShortcut,
 		},
 	}
+}
+
+// textBeforeCaret returns runes before the given rune position (for "receiver.member" parsing).
+func (c *projectCompletor) textBeforeCaret(runePos int) []rune {
+	text := c.editor.Text()
+	runes := []rune(text)
+	if runePos <= 0 {
+		return nil
+	}
+	if runePos > len(runes) {
+		runePos = len(runes)
+	}
+	return runes[:runePos]
+}
+
+func (c *projectCompletor) Suggest(ctx gvcode.CompletionContext) []gvcode.CompletionCandidate {
+	before := c.textBeforeCaret(ctx.Position.Runes)
+	if len(before) == 0 {
+		return nil
+	}
+	// Check if we're after "receiver." or "receiver.memberPrefix"
+	lastDot := -1
+	for i := len(before) - 1; i >= 0; i-- {
+		if before[i] == '.' {
+			lastDot = i
+			break
+		}
+	}
+	if lastDot >= 0 && c.memberIndex != nil {
+		receiver := string(trimIdentifierRight(before[:lastDot]))
+		memberPrefix := string(trimIdentifierLeft(before[lastDot+1:]))
+		if list, ok := c.memberIndex[receiver]; ok {
+			candidates := make([]gvcode.CompletionCandidate, 0)
+			for _, m := range list {
+				if strings.HasPrefix(m, memberPrefix) {
+					candidates = append(candidates, gvcode.CompletionCandidate{
+						Label: m,
+						TextEdit: gvcode.TextEdit{
+							NewText: m,
+						},
+						Description: receiver + " member",
+						Kind:        "property",
+						TextFormat:  "PlainText",
+					})
+				}
+			}
+			if len(candidates) > 0 {
+				return candidates
+			}
+		}
+	}
+	// Default: prefix match on full project index
+	prefix := c.editor.ReadUntil(-1, isSymbolSeparator)
+	candidates := make([]gvcode.CompletionCandidate, 0)
+	for _, w := range c.index {
+		if strings.HasPrefix(w, prefix) {
+			candidates = append(candidates, gvcode.CompletionCandidate{
+				Label: w,
+				TextEdit: gvcode.TextEdit{
+					NewText: w,
+				},
+				Description: "project",
+				Kind:        "text",
+				TextFormat:  "PlainText",
+			})
+		}
+	}
+	return candidates
+}
+
+func trimIdentifierRight(r []rune) []rune {
+	for i := len(r) - 1; i >= 0; i-- {
+		if unicode.IsLetter(r[i]) || r[i] == '_' || unicode.IsDigit(r[i]) {
+			return r[:i+1]
+		}
+	}
+	return nil
+}
+
+func trimIdentifierLeft(r []rune) []rune {
+	for i, x := range r {
+		if unicode.IsLetter(x) || x == '_' || unicode.IsDigit(x) {
+			return r[i:]
+		}
+	}
+	return nil
+}
+
+func (c *projectCompletor) FilterAndRank(pattern string, candidates []gvcode.CompletionCandidate) []gvcode.CompletionCandidate {
+	if pattern == "" {
+		return candidates
+	}
+	filtered := make([]gvcode.CompletionCandidate, 0)
+	for _, c := range candidates {
+		if strings.HasPrefix(strings.ToLower(c.Label), strings.ToLower(pattern)) {
+			filtered = append(filtered, c)
+		}
+	}
+	return filtered
+}
+
+func (s *appState) buildFileView(th *theme.Theme, path string) fileView {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		content = []byte(fmt.Sprintf("// Error reading %s: %v", path, err))
+	}
+
+	ed := wg.NewEditor(th.Material())
+	ed.WithOptions(
+		gvcode.WithLineNumber(true),
+		gvcode.WithLineNumberGutterGap(unit.Dp(12)),
+		gvcode.WithTextSize(unit.Sp(14)),
+		gvcode.WithLineHeight(0, 1.35),
+		gvcode.WithTabWidth(4),
+	)
+	ed.SetText(string(content))
+
+	// Auto-completion from project index
+	cm := &completion.DefaultCompletion{Editor: ed}
+	popup := completion.NewCompletionPopup(ed, cm)
+	popup.Theme = th.Material()
+	popup.TextSize = unit.Sp(12)
+	_ = cm.AddCompletor(&projectCompletor{editor: ed, index: s.projectIndex, memberIndex: s.memberIndex}, popup)
+	ed.WithOptions(gvcode.WithAutoCompletion(cm))
+
+	// Build color scheme from chroma style and apply syntax highlighting
+	chromaStyle := styles.Get("dracula")
+	if chromaStyle == nil {
+		chromaStyle = styles.Fallback
+	}
+	gvScheme := buildColorSchemeFromChroma(th.Material(), chromaStyle)
+	ed.WithOptions(gvcode.WithColorScheme(gvScheme))
+
+	originalContent := string(content)
+	tokens := chromaTokensToGvcode(path, originalContent, chromaStyle)
+	if len(tokens) > 0 {
+		ed.SetSyntaxTokens(tokens...)
+	}
+
+	onChange := func(currentContent string) {
+		if tab := s.openTabs[path]; tab != nil {
+			if currentContent == originalContent {
+				tab.State = tabs.TabStateClean
+			} else {
+				tab.State = tabs.TabStateDirty
+			}
+		}
+	}
+
+	return fileView{
+		Title:           path,
+		Path:            path,
+		Editor:          ed,
+		OriginalContent: originalContent,
+		OnChange:        onChange,
+		Layout: func(gtx layout.Context, th *theme.Theme) layout.Dimensions {
+			for {
+				evt, ok := ed.Update(gtx)
+				if !ok {
+					break
+				}
+				if _, isChange := evt.(gvcode.ChangeEvent); isChange {
+					if onChange != nil {
+						onChange(ed.Text())
+					}
+					ed.OnTextEdit()
+					// Keep syntax highlighting in sync
+					tokens := chromaTokensToGvcode(path, ed.Text(), chromaStyle)
+					if len(tokens) > 0 {
+						ed.SetSyntaxTokens(tokens...)
+					}
+				}
+			}
+			return layout.UniformInset(unit.Dp(8)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return ed.Layout(gtx, th.Material().Shaper)
+			})
+		},
+	}
+}
+
+// buildColorSchemeFromChroma creates a gvcode ColorScheme from chroma style.
+func buildColorSchemeFromChroma(mat *material.Theme, chromaStyle *chroma.Style) syntax.ColorScheme {
+	cs := syntax.ColorScheme{}
+	cs.Foreground = gvcolor.MakeColor(mat.Fg)
+	cs.Background = gvcolor.MakeColor(mat.Bg)
+	cs.SelectColor = gvcolor.MakeColor(mat.ContrastBg).MulAlpha(0x60)
+	cs.LineColor = gvcolor.MakeColor(mat.ContrastBg).MulAlpha(0x30)
+	cs.LineNumberColor = gvcolor.MakeColor(mat.Fg).MulAlpha(0xb6)
+
+	// Register styles for common chroma token types so they are available when we set tokens.
+	for _, tt := range []chroma.TokenType{
+		chroma.Keyword, chroma.KeywordConstant, chroma.KeywordDeclaration, chroma.KeywordType,
+		chroma.Name, chroma.NameBuiltin, chroma.NameFunction, chroma.NameVariable,
+		chroma.LiteralString, chroma.LiteralStringChar, chroma.LiteralStringEscape,
+		chroma.LiteralNumber, chroma.LiteralNumberInteger, chroma.LiteralNumberFloat,
+		chroma.Comment, chroma.CommentSingle, chroma.CommentMultiline,
+		chroma.Operator, chroma.Punctuation,
+		chroma.Text, chroma.Whitespace,
+	} {
+		entry := chromaStyle.Get(tt)
+		if entry.Colour.IsSet() {
+			fg := gvcolor.MakeColor(color.NRGBA{
+				R: entry.Colour.Red(),
+				G: entry.Colour.Green(),
+				B: entry.Colour.Blue(),
+				A: 255,
+			})
+			cs.AddStyle(syntax.StyleScope(tt.String()), 0, fg, gvcolor.Color{})
+		}
+	}
+	return cs
+}
+
+// chromaTokensToGvcode tokenizes content with chroma and returns gvcode syntax tokens (rune offsets).
+func chromaTokensToGvcode(filename, content string, _ *chroma.Style) []syntax.Token {
+	lexer := lexers.Match(filename)
+	if lexer == nil {
+		lexer = lexers.Fallback
+	}
+	lexer = chroma.Coalesce(lexer)
+
+	it, err := lexer.Tokenise(nil, content)
+	if err != nil {
+		return nil
+	}
+
+	var tokens []syntax.Token
+	runeOffset := 0
+	for t := it(); t != chroma.EOF; t = it() {
+		if t.Value == "" {
+			continue
+		}
+		start := runeOffset
+		runeOffset += utf8.RuneCountInString(t.Value)
+		end := runeOffset
+		scope := syntax.StyleScope(t.Type.String())
+		if scope.IsValid() {
+			tokens = append(tokens, syntax.Token{Start: start, End: end, Scope: scope})
+		}
+	}
+	return tokens
 }

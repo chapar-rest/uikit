@@ -90,6 +90,14 @@ func (t *Tabs) AddTab(tab *Tab) {
 	tab.selected = true
 }
 
+// CurrentView returns the index of the currently selected tab, or -1 if none.
+func (t *Tabs) CurrentView() int {
+	if t.currentView < 0 || t.currentView >= len(t.tabs) {
+		return -1
+	}
+	return t.currentView
+}
+
 // SelectTab makes the given tab the selected one. It returns false if the tab is not in the list.
 func (t *Tabs) SelectTab(target *Tab) bool {
 	for idx, tab := range t.tabs {
@@ -347,7 +355,7 @@ func (t *Tabs) Update(gtx layout.Context) {
 	// Delete closed tabs in reverse order so indices remain valid.
 	for i := len(closedIndices) - 1; i >= 0; i-- {
 		idx := closedIndices[i]
-		t.tabs = slices.Delete(t.tabs, idx, 1)
+		t.tabs = slices.Delete(t.tabs, idx, idx+1)
 		// Adjust currentView: if we removed the selected tab or one before it, clamp or decrement.
 		if idx < t.currentView {
 			t.currentView--
