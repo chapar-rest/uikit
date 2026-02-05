@@ -92,7 +92,13 @@ func (n *Node) Update(gtx layout.Context) {
 		switch ev.Kind {
 		case gesture.KindClick:
 			// TODO: make it a configurable option on treeview component.
-			n.discloser.ToggleVisibility(gtx.Now)
+			if len(n.Children) > 0 {
+				n.discloser.ToggleVisibility(gtx.Now)
+			} else {
+				if n.OnClickFunc != nil {
+					n.OnClickFunc(n)
+				}
+			}
 		}
 	}
 

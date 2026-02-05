@@ -37,6 +37,7 @@ type Node struct {
 	reader    *strings.Reader
 
 	OnDropConfirmFunc func(source *Node, target *Node) bool
+	OnClickFunc       func(node *Node)
 }
 
 func NewNode(id string, w layout.Widget) *Node {

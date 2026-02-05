@@ -14,6 +14,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget/material"
 	"github.com/chapar-rest/uikit/split"
+	"github.com/chapar-rest/uikit/tabs"
 	"github.com/chapar-rest/uikit/theme"
 	"github.com/chapar-rest/uikit/theme/themes"
 	"github.com/chapar-rest/uikit/treeview"
@@ -46,16 +47,18 @@ func loop(w *app.Window) error {
 				HoverColor: th.Base.Secondary,
 			},
 		},
-		tree:  buildFileTree(th),
-		theme: th,
+		theme:     th,
+		openFiles: make(map[string]fileView),
 	}
+	state.tree = state.buildFileTree(th)
+	state.tabitems = tabs.NewTabs()
 
 	var ops op.Ops
 	for {
 		switch e := w.Event().(type) {
 		case app.FrameEvent:
 			gtx := app.NewContext(&ops, e)
-			state.appLayout(gtx, th.Material())
+			state.appLayout(gtx)
 			e.Frame(gtx.Ops)
 		case app.DestroyEvent:
 			os.Exit(0)
@@ -69,9 +72,43 @@ type appState struct {
 	tree *treeview.Tree
 
 	theme *theme.Theme
+
+	tabitems *tabs.Tabs
+
+	openFiles map[string]fileView
 }
 
-func (s *appState) appLayout(gtx layout.Context, th *material.Theme) {
+type fileView struct {
+	Title  string
+	Path   string
+	Layout func(gtx layout.Context, th *theme.Theme) layout.Dimensions
+}
+
+func (s *appState) onTabClose(tab *tabs.Tab) bool {
+	return true
+}
+
+func (s *appState) onFileNodeClick(node *treeview.Node) {
+	// node id is the full path of the file
+	path := node.ID
+	if _, ok := s.openFiles[path]; ok {
+		return
+	}
+
+	s.openFiles[path] = s.buildFileView(s.theme, path)
+
+	t := tabs.NewTab(func(gtx layout.Context, th *theme.Theme) layout.Dimensions {
+		lb := material.Label(th.Material(), unit.Sp(14), s.openFiles[path].Title)
+		return lb.Layout(gtx)
+	})
+
+	t.OnCloseFunc = s.onTabClose
+
+	t.State = tabs.TabStateClean
+	s.tabitems.AddTab(t)
+}
+
+func (s *appState) appLayout(gtx layout.Context) {
 	// paint the background of the window with the theme's surface color
 	paint.Fill(gtx.Ops, s.theme.Base.Surface)
 
@@ -80,12 +117,12 @@ func (s *appState) appLayout(gtx layout.Context, th *material.Theme) {
 			return s.tree.Layout(gtx, s.theme)
 		},
 		func(gtx layout.Context) layout.Dimensions {
-			return material.Label(th, unit.Sp(16), "Right").Layout(gtx)
+			return s.tabitems.Layout(gtx, s.theme)
 		},
 	)
 }
 
-func buildFileTree(th *theme.Theme) *treeview.Tree {
+func (s *appState) buildFileTree(th *theme.Theme) *treeview.Tree {
 	tree := treeview.NewTree()
 
 	entries, err := os.ReadDir(".")
@@ -101,7 +138,7 @@ func buildFileTree(th *theme.Theme) *treeview.Tree {
 			continue
 		}
 
-		node := buildFileNode(th, entry, ".")
+		node := s.buildFileNode(th, entry, ".")
 		if node != nil {
 			tree.Insert(node)
 		}
@@ -110,7 +147,7 @@ func buildFileTree(th *theme.Theme) *treeview.Tree {
 	return tree
 }
 
-func buildFileNode(th *theme.Theme, entry os.DirEntry, parentPath string) *treeview.Node {
+func (s *appState) buildFileNode(th *theme.Theme, entry os.DirEntry, parentPath string) *treeview.Node {
 	name := entry.Name()
 	fullPath := filepath.Join(parentPath, name)
 
@@ -118,12 +155,16 @@ func buildFileNode(th *theme.Theme, entry os.DirEntry, parentPath string) *treev
 		return material.Label(th.Material(), unit.Sp(14), name).Layout(gtx)
 	})
 
+	node.OnClickFunc = func(node *treeview.Node) {
+		s.onFileNodeClick(node)
+	}
+
 	// If it's a directory, recursively add its contents as children
 	if entry.IsDir() {
 		dirEntries, err := os.ReadDir(fullPath)
 		if err == nil {
 			for _, childEntry := range dirEntries {
-				childNode := buildFileNode(th, childEntry, fullPath)
+				childNode := s.buildFileNode(th, childEntry, fullPath)
 				if childNode != nil {
 					node.AddChild(childNode)
 				}
@@ -132,4 +173,14 @@ func buildFileNode(th *theme.Theme, entry os.DirEntry, parentPath string) *treev
 	}
 
 	return node
+}
+
+func (s *appState) buildFileView(th *theme.Theme, path string) fileView {
+	return fileView{
+		Title: path,
+		Path:  path,
+		Layout: func(gtx layout.Context, th *theme.Theme) layout.Dimensions {
+			return material.Label(th.Material(), unit.Sp(14), path).Layout(gtx)
+		},
+	}
 }
