@@ -258,7 +258,7 @@ func (n *Node) controlLayout(gtx layout.Context, theme *theme.Theme) layout.Dime
 	return layout.Inset{
 		Right: unit.Dp(4),
 	}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		gtx.Constraints.Max.X = gtx.Dp(16)
+		gtx.Constraints.Max.X = gtx.Dp(14)
 		if !n.discloser.Visible() {
 			return icons.ChevronRight.Layout(gtx, theme.Base.Text)
 		}
