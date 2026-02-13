@@ -15,6 +15,10 @@ type Icon interface {
 var (
 	ChevronRight = loadSvgIcon("chevron-right")
 	ChevronDown  = loadSvgIcon("chevron-down")
+	FileInput    = loadSvgIcon("file-input")
+	FileAdd      = loadSvgIcon("file-add")
+	Search       = loadSvgIcon("search")
+	History      = loadSvgIcon("history")
 
 	CircleIcon *widget.Icon = func() *widget.Icon { icon, _ := widget.NewIcon(icons.ImageLens); return icon }()
 	CloseIcon  *widget.Icon = func() *widget.Icon { icon, _ := widget.NewIcon(icons.NavigationClose); return icon }()

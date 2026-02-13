@@ -4,7 +4,6 @@ import (
 	"image/color"
 
 	"gioui.org/layout"
-	"gioui.org/op/paint"
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
@@ -73,9 +72,9 @@ func (t *Tree) Traverse(callback func(node *Node)) {
 }
 
 func (t *Tree) Layout(gtx layout.Context, theme *theme.Theme) layout.Dimensions {
-	bgColor, _ := getBkColor(theme)
+	//bgColor, _ := getBkColor(theme)
 	// paint the background of the tree with the theme's background color
-	paint.Fill(gtx.Ops, bgColor)
+	//paint.Fill(gtx.Ops, bgColor)
 
 	lst := material.List(theme.Material(), t.childrenList)
 	lst.ScrollbarStyle = makeScrollbarStyle(theme, lst.ScrollbarStyle.Scrollbar)

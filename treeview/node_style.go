@@ -2,6 +2,7 @@ package treeview
 
 import (
 	"image"
+	"image/color"
 	"io"
 	"log"
 	"strings"
@@ -192,9 +193,12 @@ func (n *Node) hasParent() bool {
 }
 
 func (n *Node) rootLayout(gtx layout.Context, withControl bool, theme *theme.Theme) layout.Dimensions {
-	bgColor, hoverBgColor := getBkColor(theme)
+	_, hoverBgColor := getBkColor(theme)
+	var bgColor color.NRGBA
 	if n.click.Hovered() || n.droppable() {
 		bgColor = hoverBgColor
+	} else {
+		bgColor = color.NRGBA{}
 	}
 
 	if n.droppable() && withControl && !n.discloser.Visible() {
@@ -238,7 +242,11 @@ func (n *Node) rootLayout(gtx layout.Context, withControl bool, theme *theme.The
 	}).Push(gtx.Ops).Pop()
 	event.Op(gtx.Ops, n)
 	n.click.Add(gtx.Ops)
-	paint.Fill(gtx.Ops, bgColor)
+
+	if bgColor != (color.NRGBA{}) {
+		// only paint the hover color
+		paint.Fill(gtx.Ops, bgColor)
+	}
 
 	return n.draggable.Layout(gtx,
 		func(gtx layout.Context) layout.Dimensions {

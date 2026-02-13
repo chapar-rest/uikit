@@ -17,10 +17,15 @@ import (
 	"gioui.org/op"
 	"gioui.org/op/paint"
 	"gioui.org/unit"
+	"gioui.org/widget"
 	"gioui.org/widget/material"
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
+	"github.com/chapar-rest/uikit/actionbar"
+	"github.com/chapar-rest/uikit/button"
+	"github.com/chapar-rest/uikit/divider"
+	"github.com/chapar-rest/uikit/icons"
 	"github.com/chapar-rest/uikit/split"
 	"github.com/chapar-rest/uikit/tabs"
 	"github.com/chapar-rest/uikit/theme"
@@ -60,17 +65,28 @@ func loop(w *app.Window) error {
 				HoverColor: th.Base.Secondary,
 			},
 		},
-		theme:       th,
-		openFiles:   make(map[string]fileView),
-		openTabs:    make(map[string]*tabs.Tab),
-		openPaths:   make([]string, 0),
-		tabToPath:   make(map[*tabs.Tab]string),
+		actionbar:    actionbar.NewActionBar(layout.Horizontal, layout.Start, layout.SpaceAround),
+		appBar:       actionbar.NewActionBar(layout.Horizontal, layout.Start, layout.SpaceBetween),
+		theme:        th,
+		openFiles:    make(map[string]fileView),
+		openTabs:     make(map[string]*tabs.Tab),
+		openPaths:    make([]string, 0),
+		tabToPath:    make(map[*tabs.Tab]string),
 		projectIndex: make([]string, 0),
 		memberIndex:  make(map[string][]string),
 	}
 	state.tree = state.buildFileTree(th)
 	state.tabitems = tabs.NewTabs()
 	state.buildProjectIndex()
+
+	state.actionbar.AddItem(button.IconButton(th, &state.NewFileClickable, icons.FileAdd, theme.KindPrimary))
+	state.actionbar.AddItem(button.IconButton(th, &state.SearchClickable, icons.Search, theme.KindPrimary))
+	state.actionbar.AddItem(button.IconButton(th, &state.OpenFileClickable, icons.FileInput, theme.KindPrimary))
+	state.actionbar.AddItem(button.IconButton(th, &state.HistoryClickable, icons.History, theme.KindPrimary))
+
+	state.appBar.AddItem(actionbar.ActionBarItemFunc(func(gtx layout.Context, th *theme.Theme) layout.Dimensions {
+		return material.Label(th.Material(), unit.Sp(14), "VOID editor").Layout(gtx)
+	}))
 
 	var ops op.Ops
 	for {
@@ -86,6 +102,11 @@ func loop(w *app.Window) error {
 }
 
 type appState struct {
+	SearchClickable   widget.Clickable
+	NewFileClickable  widget.Clickable
+	OpenFileClickable widget.Clickable
+	HistoryClickable  widget.Clickable
+
 	split *split.Split
 
 	tree *treeview.Tree
@@ -94,19 +115,23 @@ type appState struct {
 
 	tabitems *tabs.Tabs
 
+	actionbar *actionbar.ActionBar
+
+	appBar *actionbar.ActionBar
+
 	openFiles    map[string]fileView
 	openTabs     map[string]*tabs.Tab
 	openPaths    []string             // path order matching tab order
 	tabToPath    map[*tabs.Tab]string // tab -> path for close callback
 	projectIndex []string             // unique identifiers from project files (for completion)
-	memberIndex  map[string][]string   // receiver -> members seen after "receiver." in project
+	memberIndex  map[string][]string  // receiver -> members seen after "receiver." in project
 }
 
 type fileView struct {
 	Title           string
 	Path            string
 	Editor          *gvcode.Editor
-	OriginalContent string // content when file was opened (from disk)
+	OriginalContent string                      // content when file was opened (from disk)
 	OnChange        func(currentContent string) // called when editor content changes; pass ed.Text() to update dirty state
 	Layout          func(gtx layout.Context, th *theme.Theme) layout.Dimensions
 }
@@ -148,30 +173,63 @@ func (s *appState) onFileNodeClick(node *treeview.Node) {
 func (s *appState) appLayout(gtx layout.Context) {
 	paint.Fill(gtx.Ops, s.theme.Base.Surface)
 
-	s.split.Layout(gtx,
-		func(gtx layout.Context) layout.Dimensions {
-			return s.tree.Layout(gtx, s.theme)
-		},
-		func(gtx layout.Context) layout.Dimensions {
-			return layout.Flex{
-				Axis: layout.Vertical,
-			}.Layout(gtx,
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return s.tabitems.Layout(gtx, s.theme)
-				}),
-				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-					if s.tabitems.CurrentView() < 0 || s.tabitems.CurrentView() >= len(s.openPaths) {
-						return layout.Dimensions{}
-					}
-					path := s.openPaths[s.tabitems.CurrentView()]
-					fv, ok := s.openFiles[path]
-					if !ok {
-						return layout.Dimensions{}
-					}
-					return fv.Layout(gtx, s.theme)
-				}),
+	layout.Flex{
+		Axis: layout.Vertical,
+	}.Layout(gtx,
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return layout.Inset{
+				Top:    unit.Dp(12),
+				Left:   unit.Dp(8),
+				Right:  unit.Dp(8),
+				Bottom: unit.Dp(12),
+			}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return s.appBar.Layout(gtx, s.theme)
+			})
+		}),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return divider.NewDivider(layout.Horizontal, unit.Dp(1)).Layout(gtx, s.theme)
+		}),
+		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+			return s.split.Layout(gtx,
+				func(gtx layout.Context) layout.Dimensions {
+					return layout.Flex{
+						Axis: layout.Vertical,
+					}.Layout(gtx,
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return layout.UniformInset(unit.Dp(8)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+								return s.actionbar.Layout(gtx, s.theme)
+							})
+						}),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return divider.NewDivider(layout.Horizontal, unit.Dp(1)).Layout(gtx, s.theme)
+						}),
+						layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+							return s.tree.Layout(gtx, s.theme)
+						}),
+					)
+				},
+				func(gtx layout.Context) layout.Dimensions {
+					return layout.Flex{
+						Axis: layout.Vertical,
+					}.Layout(gtx,
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return s.tabitems.Layout(gtx, s.theme)
+						}),
+						layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+							if s.tabitems.CurrentView() < 0 || s.tabitems.CurrentView() >= len(s.openPaths) {
+								return layout.Dimensions{}
+							}
+							path := s.openPaths[s.tabitems.CurrentView()]
+							fv, ok := s.openFiles[path]
+							if !ok {
+								return layout.Dimensions{}
+							}
+							return fv.Layout(gtx, s.theme)
+						}),
+					)
+				},
 			)
-		},
+		}),
 	)
 }
 
