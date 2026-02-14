@@ -26,6 +26,7 @@ import (
 	"github.com/chapar-rest/uikit/button"
 	"github.com/chapar-rest/uikit/divider"
 	"github.com/chapar-rest/uikit/icons"
+	"github.com/chapar-rest/uikit/sidebar"
 	"github.com/chapar-rest/uikit/split"
 	"github.com/chapar-rest/uikit/tabs"
 	"github.com/chapar-rest/uikit/theme"
@@ -51,7 +52,7 @@ func main() {
 }
 
 func loop(w *app.Window) error {
-	th := themes.Dark()
+	th := themes.Light()
 	fonts := theme.BuiltinFonts()
 	th.WithFonts(fonts)
 
@@ -65,6 +66,7 @@ func loop(w *app.Window) error {
 				HoverColor: th.Base.Secondary,
 			},
 		},
+		sidebar:      sidebar.New(),
 		actionbar:    actionbar.NewActionBar(layout.Horizontal, layout.Start, layout.SpaceAround),
 		appBar:       actionbar.NewActionBar(layout.Horizontal, layout.Start, layout.SpaceBetween),
 		theme:        th,
@@ -88,6 +90,30 @@ func loop(w *app.Window) error {
 		return material.Label(th.Material(), unit.Sp(14), "VOID editor").Layout(gtx)
 	}))
 
+	state.sidebar.AddNavItem(sidebar.Item{
+		Tag:  "files",
+		Name: "Files",
+		Icon: icons.Files,
+	})
+
+	state.sidebar.AddNavItem(sidebar.Item{
+		Tag:  "history",
+		Name: "History",
+		Icon: icons.History,
+	})
+
+	state.sidebar.AddNavItem(sidebar.Item{
+		Tag:  "search",
+		Name: "Search",
+		Icon: icons.Search,
+	})
+
+	state.sidebar.AddNavItem(sidebar.Item{
+		Tag:  "settings",
+		Name: "Settings",
+		Icon: icons.Settings,
+	})
+
 	var ops op.Ops
 	for {
 		switch e := w.Event().(type) {
@@ -106,6 +132,8 @@ type appState struct {
 	NewFileClickable  widget.Clickable
 	OpenFileClickable widget.Clickable
 	HistoryClickable  widget.Clickable
+
+	sidebar *sidebar.Sidebar
 
 	split *split.Split
 
@@ -190,44 +218,57 @@ func (s *appState) appLayout(gtx layout.Context) {
 			return divider.NewDivider(layout.Horizontal, unit.Dp(1)).Layout(gtx, s.theme)
 		}),
 		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-			return s.split.Layout(gtx,
-				func(gtx layout.Context) layout.Dimensions {
-					return layout.Flex{
-						Axis: layout.Vertical,
-					}.Layout(gtx,
-						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return layout.UniformInset(unit.Dp(8)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-								return s.actionbar.Layout(gtx, s.theme)
-							})
-						}),
-						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return divider.NewDivider(layout.Horizontal, unit.Dp(1)).Layout(gtx, s.theme)
-						}),
-						layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-							return s.tree.Layout(gtx, s.theme)
-						}),
+			return layout.Flex{
+				Axis: layout.Horizontal,
+			}.Layout(gtx,
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					gtx.Constraints.Max.X = gtx.Dp(60)
+					return s.sidebar.Layout(gtx, s.theme)
+				}),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return divider.NewDivider(layout.Vertical, unit.Dp(1)).Layout(gtx, s.theme)
+				}),
+				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+					return s.split.Layout(gtx,
+						func(gtx layout.Context) layout.Dimensions {
+							return layout.Flex{
+								Axis: layout.Vertical,
+							}.Layout(gtx,
+								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+									return layout.UniformInset(unit.Dp(8)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+										return s.actionbar.Layout(gtx, s.theme)
+									})
+								}),
+								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+									return divider.NewDivider(layout.Horizontal, unit.Dp(1)).Layout(gtx, s.theme)
+								}),
+								layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+									return s.tree.Layout(gtx, s.theme)
+								}),
+							)
+						},
+						func(gtx layout.Context) layout.Dimensions {
+							return layout.Flex{
+								Axis: layout.Vertical,
+							}.Layout(gtx,
+								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+									return s.tabitems.Layout(gtx, s.theme)
+								}),
+								layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+									if s.tabitems.CurrentView() < 0 || s.tabitems.CurrentView() >= len(s.openPaths) {
+										return layout.Dimensions{}
+									}
+									path := s.openPaths[s.tabitems.CurrentView()]
+									fv, ok := s.openFiles[path]
+									if !ok {
+										return layout.Dimensions{}
+									}
+									return fv.Layout(gtx, s.theme)
+								}),
+							)
+						},
 					)
-				},
-				func(gtx layout.Context) layout.Dimensions {
-					return layout.Flex{
-						Axis: layout.Vertical,
-					}.Layout(gtx,
-						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return s.tabitems.Layout(gtx, s.theme)
-						}),
-						layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-							if s.tabitems.CurrentView() < 0 || s.tabitems.CurrentView() >= len(s.openPaths) {
-								return layout.Dimensions{}
-							}
-							path := s.openPaths[s.tabitems.CurrentView()]
-							fv, ok := s.openFiles[path]
-							if !ok {
-								return layout.Dimensions{}
-							}
-							return fv.Layout(gtx, s.theme)
-						}),
-					)
-				},
+				}),
 			)
 		}),
 	)

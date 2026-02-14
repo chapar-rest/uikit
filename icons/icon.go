@@ -19,6 +19,8 @@ var (
 	FileAdd      = loadSvgIcon("file-add")
 	Search       = loadSvgIcon("search")
 	History      = loadSvgIcon("history")
+	Settings     = loadSvgIcon("settings")
+	Files        = loadSvgIcon("files")
 
 	CircleIcon *widget.Icon = func() *widget.Icon { icon, _ := widget.NewIcon(icons.ImageLens); return icon }()
 	CloseIcon  *widget.Icon = func() *widget.Icon { icon, _ := widget.NewIcon(icons.NavigationClose); return icon }()
