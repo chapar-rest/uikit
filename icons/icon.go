@@ -21,6 +21,8 @@ var (
 	History      = loadSvgIcon("history")
 	Settings     = loadSvgIcon("settings")
 	Files        = loadSvgIcon("files")
+	Moon         = loadSvgIcon("moon")
+	Sun          = loadSvgIcon("sun")
 
 	CircleIcon *widget.Icon = func() *widget.Icon { icon, _ := widget.NewIcon(icons.ImageLens); return icon }()
 	CloseIcon  *widget.Icon = func() *widget.Icon { icon, _ := widget.NewIcon(icons.NavigationClose); return icon }()

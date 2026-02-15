@@ -31,6 +31,7 @@ import (
 	"github.com/chapar-rest/uikit/tabs"
 	"github.com/chapar-rest/uikit/theme"
 	"github.com/chapar-rest/uikit/theme/themes"
+	"github.com/chapar-rest/uikit/toggle"
 	"github.com/chapar-rest/uikit/treeview"
 	"github.com/oligo/gvcode"
 	"github.com/oligo/gvcode/addons/completion"
@@ -81,13 +82,28 @@ func loop(w *app.Window) error {
 	state.tabitems = tabs.NewTabs()
 	state.buildProjectIndex()
 
-	state.actionbar.AddItem(button.IconButton(th, &state.NewFileClickable, icons.FileAdd, theme.KindPrimary))
-	state.actionbar.AddItem(button.IconButton(th, &state.SearchClickable, icons.Search, theme.KindPrimary))
-	state.actionbar.AddItem(button.IconButton(th, &state.OpenFileClickable, icons.FileInput, theme.KindPrimary))
-	state.actionbar.AddItem(button.IconButton(th, &state.HistoryClickable, icons.History, theme.KindPrimary))
+	state.actionbar.AddItem(button.IconButton(state.theme, &state.NewFileClickable, icons.FileAdd, theme.KindPrimary))
+	state.actionbar.AddItem(button.IconButton(state.theme, &state.SearchClickable, icons.Search, theme.KindPrimary))
+	state.actionbar.AddItem(button.IconButton(state.theme, &state.OpenFileClickable, icons.FileInput, theme.KindPrimary))
+	state.actionbar.AddItem(button.IconButton(state.theme, &state.HistoryClickable, icons.History, theme.KindPrimary))
+
+	state.themeToggleClickable = toggle.NewToggleButton(state.theme, []*toggle.State{
+		{
+			Tag:  "dark",
+			Icon: icons.Moon,
+		},
+		{
+			Tag:  "light",
+			Icon: icons.Sun,
+		},
+	})
 
 	state.appBar.AddItem(actionbar.ActionBarItemFunc(func(gtx layout.Context, th *theme.Theme) layout.Dimensions {
 		return material.Label(th.Material(), unit.Sp(14), "VOID editor").Layout(gtx)
+	}))
+
+	state.appBar.AddItem(actionbar.ActionBarItemFunc(func(gtx layout.Context, th *theme.Theme) layout.Dimensions {
+		return state.themeToggleClickable.Layout(gtx, th)
 	}))
 
 	state.sidebar.AddNavItem(sidebar.Item{
@@ -134,6 +150,9 @@ type appState struct {
 	HistoryClickable  widget.Clickable
 
 	sidebar *sidebar.Sidebar
+
+	currentTheme         string
+	themeToggleClickable *toggle.ToggleButton
 
 	split *split.Split
 
@@ -199,7 +218,19 @@ func (s *appState) onFileNodeClick(node *treeview.Node) {
 }
 
 func (s *appState) appLayout(gtx layout.Context) {
-	paint.Fill(gtx.Ops, s.theme.Base.Surface)
+
+	th := s.theme
+	if s.currentTheme != s.themeToggleClickable.StateTag() {
+		s.currentTheme = s.themeToggleClickable.StateTag()
+		if s.currentTheme == "dark" {
+			th = themes.Dark()
+		} else {
+			th = themes.Light()
+		}
+		s.theme = th
+	}
+
+	paint.Fill(gtx.Ops, th.Base.Surface)
 
 	layout.Flex{
 		Axis: layout.Vertical,
@@ -211,11 +242,11 @@ func (s *appState) appLayout(gtx layout.Context) {
 				Right:  unit.Dp(8),
 				Bottom: unit.Dp(12),
 			}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return s.appBar.Layout(gtx, s.theme)
+				return s.appBar.Layout(gtx, th)
 			})
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return divider.NewDivider(layout.Horizontal, unit.Dp(1)).Layout(gtx, s.theme)
+			return divider.NewDivider(layout.Horizontal, unit.Dp(1)).Layout(gtx, th)
 		}),
 		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{
@@ -223,10 +254,10 @@ func (s *appState) appLayout(gtx layout.Context) {
 			}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					gtx.Constraints.Max.X = gtx.Dp(60)
-					return s.sidebar.Layout(gtx, s.theme)
+					return s.sidebar.Layout(gtx, th)
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return divider.NewDivider(layout.Vertical, unit.Dp(1)).Layout(gtx, s.theme)
+					return divider.NewDivider(layout.Vertical, unit.Dp(1)).Layout(gtx, th)
 				}),
 				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 					return s.split.Layout(gtx,
