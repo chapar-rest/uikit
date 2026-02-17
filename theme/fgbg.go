@@ -16,24 +16,24 @@ const (
 	KindDanger    Kind = "danger"
 )
 
-func (th *Theme) FgBg(kind Kind, component string) (color.NRGBA, color.NRGBA) {
+func (th *Theme) FgBgTxt(kind Kind, component string) (color.NRGBA, color.NRGBA, color.NRGBA) {
 	cm := th.GetComponent(component)
 
 	switch kind {
 	case KindPrimary:
-		return cm.Primary, cm.Surface
+		return cm.Primary, cm.Surface, cm.Text
 	case KindSecondary:
-		return cm.Secondary, cm.Surface
+		return cm.Secondary, cm.Surface, cm.Text
 	case KindInfo:
-		return cm.Info, cm.Surface
+		return cm.Info, cm.Surface, cm.Text
 	case KindSuccess:
-		return cm.Success, cm.Surface
+		return cm.Success, cm.Surface, cm.Text
 	case KindNotice:
-		return cm.Notice, cm.Surface
+		return cm.Notice, cm.Surface, cm.Text
 	case KindWarning:
-		return cm.Warning, cm.Surface
+		return cm.Warning, cm.Surface, cm.Text
 	case KindDanger:
-		return cm.Danger, cm.Surface
+		return cm.Danger, cm.Surface, cm.Text
 	}
-	return color.NRGBA{}, color.NRGBA{}
+	return color.NRGBA{}, color.NRGBA{}, color.NRGBA{}
 }

@@ -27,6 +27,7 @@ const (
 )
 
 type ButtonStyle struct {
+	Kind         theme.Kind
 	Text         string
 	Icon         icons.Icon
 	IconPosition position.Position
@@ -51,13 +52,10 @@ type ButtonLayoutStyle struct {
 }
 
 func TextButton(th *theme.Theme, button *widget.Clickable, txt string, kind theme.Kind) ButtonStyle {
-	fg, bg := th.FgBg(kind, ButtonComponent)
 	b := ButtonStyle{
 		Text:         txt,
 		Icon:         nil,
-		Color:        fg,
 		CornerRadius: theme.RadiusSmall,
-		Background:   bg,
 		TextSize:     th.Material().TextSize * 14.0 / 16.0,
 		Inset:        theme.InsetMedium,
 		Button:       button,
@@ -68,14 +66,12 @@ func TextButton(th *theme.Theme, button *widget.Clickable, txt string, kind them
 }
 
 func IconButton(th *theme.Theme, button *widget.Clickable, icon icons.Icon, kind theme.Kind) ButtonStyle {
-	fg, bg := th.FgBg(kind, ButtonComponent)
 	b := ButtonStyle{
+		Kind:         kind,
 		Text:         "",
 		Icon:         icon,
 		IconPosition: position.PositionLeft,
-		Color:        fg,
 		CornerRadius: theme.RadiusSmall,
-		Background:   bg,
 		TextSize:     th.Material().TextSize * 14.0 / 16.0,
 		Inset:        theme.InsetSmall,
 		Button:       button,
@@ -88,15 +84,12 @@ func IconButton(th *theme.Theme, button *widget.Clickable, icon icons.Icon, kind
 }
 
 func Button(th *theme.Theme, button *widget.Clickable, icon icons.Icon, iconPosition position.Position, txt string, kind theme.Kind) ButtonStyle {
-	fg, bg := th.FgBg(kind, ButtonComponent)
-
 	b := ButtonStyle{
+		Kind:         kind,
 		Text:         txt,
 		Icon:         icon,
 		IconPosition: iconPosition,
-		Color:        fg,
 		CornerRadius: theme.RadiusSmall,
-		Background:   bg,
 		TextSize:     th.Material().TextSize * 14.0 / 16.0,
 		Inset:        theme.InsetSmall,
 		Button:       button,
@@ -109,8 +102,9 @@ func Button(th *theme.Theme, button *widget.Clickable, icon icons.Icon, iconPosi
 }
 
 func (b ButtonStyle) Layout(gtx layout.Context, theme *theme.Theme) layout.Dimensions {
+	_, bg, txt := theme.FgBgTxt(b.Kind, ButtonComponent)
 	return ButtonLayoutStyle{
-		Background:   b.Background,
+		Background:   bg,
 		CornerRadius: b.CornerRadius,
 		Button:       b.Button,
 	}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
@@ -121,7 +115,7 @@ func (b ButtonStyle) Layout(gtx layout.Context, theme *theme.Theme) layout.Dimen
 				return b.IconInset.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 					gtx.Constraints.Min.X = gtx.Dp(unit.Dp(b.IconSize))
 					gtx.Constraints.Max.X = gtx.Dp(unit.Dp(b.IconSize))
-					return b.Icon.Layout(gtx, b.Color)
+					return b.Icon.Layout(gtx, txt)
 				})
 			}))
 		}
@@ -130,7 +124,7 @@ func (b ButtonStyle) Layout(gtx layout.Context, theme *theme.Theme) layout.Dimen
 			items = append(items, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				lb := material.Label(theme.Material(), b.TextSize, b.Text)
 				lb.Font = b.Font
-				lb.Color = b.Color
+				lb.Color = txt
 				return lb.Layout(gtx)
 			}))
 		}

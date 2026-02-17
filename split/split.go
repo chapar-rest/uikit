@@ -11,6 +11,11 @@ import (
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
 	"gioui.org/unit"
+	"github.com/chapar-rest/uikit/theme"
+)
+
+const (
+	SplitComponent = "split"
 )
 
 // Split provides a draggable handle in between two widgets for resizing their area.
@@ -33,7 +38,11 @@ type HandleStyle struct {
 //
 // The widgets w1 and w2 must be able to gracefully resize their minimum and maximum dimensions
 // in order for the resize to be smooth.
-func (rs *Split) Layout(gtx layout.Context, w1, w2 layout.Widget) layout.Dimensions {
+func (rs *Split) Layout(gtx layout.Context, th *theme.Theme, w1, w2 layout.Widget) layout.Dimensions {
+	cm := th.GetComponent(SplitComponent)
+	rs.HandleStyle.Color = cm.Border
+	rs.HandleStyle.HoverColor = cm.Secondary
+
 	// Compute the first widget's max width/height.
 	rs.float.Length = rs.Axis.Convert(gtx.Constraints.Max).X
 	rs.float.Pos = int(rs.Ratio * float32(rs.float.Length))

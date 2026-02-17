@@ -8,7 +8,7 @@ import (
 func CatppuccinFrappe() *theme.Theme {
 	return &theme.Theme{
 		Id:     "catppuccin-frappe",
-		Name:   "Catppuccin Frappé",
+		Name:   "Catppuccin Frappe",
 		IsDark: true,
 		Base: theme.Base{
 			Surface:      colors.FromHex("292c3d"), // hsl(231,19%,20%)

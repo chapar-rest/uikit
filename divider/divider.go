@@ -25,14 +25,14 @@ func (d *DividerStyle) Layout(gtx layout.Context, th *theme.Theme) layout.Dimens
 		return layout.Dimensions{}
 	}
 
-	if d.Fill == (color.NRGBA{}) {
-		d.Fill = th.Base.SurfaceHighlight
-	}
+	// if d.Fill == (color.NRGBA{}) {
+	// 	d.Fill = th.Base.SurfaceHighlight
+	// }
 
 	return d.Inset.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		weight := gtx.Dp(d.Thickness)
 
-		var maxDim = image.Point{}
+		var maxDim image.Point
 		if d.Axis == layout.Horizontal {
 			maxDim = image.Pt(gtx.Constraints.Min.X, weight)
 		} else {
@@ -40,14 +40,17 @@ func (d *DividerStyle) Layout(gtx layout.Context, th *theme.Theme) layout.Dimens
 		}
 
 		line := image.Rectangle{Max: maxDim}
-		paint.FillShape(gtx.Ops, d.Fill, clip.Rect(line).Op())
+		if d.Fill != (color.NRGBA{}) {
+			paint.FillShape(gtx.Ops, d.Fill, clip.Rect(line).Op())
+		}
 		return layout.Dimensions{Size: line.Max}
 	})
 }
 
-func NewDivider(axis layout.Axis, thickness unit.Dp) *DividerStyle {
+func NewDivider(axis layout.Axis, thickness unit.Dp, fill color.NRGBA) *DividerStyle {
 	return &DividerStyle{
 		Thickness: thickness,
 		Axis:      axis,
+		Fill:      fill,
 	}
 }

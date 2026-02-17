@@ -33,6 +33,7 @@ type State struct {
 }
 
 type ToggleButton struct {
+	Kind         theme.Kind
 	Button       *widget.Clickable
 	CornerRadius unit.Dp
 
@@ -57,23 +58,22 @@ type ToggleButtonLayoutStyle struct {
 
 // NewToggleButton creates a toggle button with two or more states.
 // States are cycled on each click. Caller must not pass empty states.
-func NewToggleButton(th *theme.Theme, states []*State) *ToggleButton {
+func NewToggleButton(th *theme.Theme, kind theme.Kind, states []*State) *ToggleButton {
 	if len(states) == 0 {
 		panic("toggle: at least one state required")
 	}
 	return &ToggleButton{
+		Kind:         kind,
 		states:       states,
 		currentIndex: 0,
 		Button:       &widget.Clickable{},
 		CornerRadius: theme.RadiusSmall,
 
-		IconSize:   unit.Sp(14),
-		IconInset:  theme.InsetSmall,
-		Background: th.Base.Surface,
-		Color:      th.Base.Text,
-		Font:       font.Font{Typeface: th.Material().Face},
-		TextSize:   unit.Sp(14),
-		Inset:      theme.InsetNone,
+		IconSize:  unit.Sp(14),
+		IconInset: theme.InsetSmall,
+		Font:      font.Font{Typeface: th.Material().Face},
+		TextSize:  unit.Sp(14),
+		Inset:     theme.InsetNone,
 	}
 }
 
@@ -108,6 +108,7 @@ func (b *ToggleButton) SetState(index int) {
 }
 
 func (b *ToggleButton) Layout(gtx layout.Context, th *theme.Theme) layout.Dimensions {
+	_, bg, txt := th.FgBgTxt(b.Kind, ToggleButtonComponent)
 	// Immediate mode: on click, cycle to next state
 	if b.Button.Clicked(gtx) {
 		b.currentIndex = (b.currentIndex + 1) % len(b.states)
@@ -116,16 +117,6 @@ func (b *ToggleButton) Layout(gtx layout.Context, th *theme.Theme) layout.Dimens
 	cur := b.State()
 	if cur == nil {
 		return layout.Dimensions{}
-	}
-
-	// Resolve colors: state overrides vs shared
-	bg := b.Background
-	if cur.Background != (color.NRGBA{}) {
-		bg = cur.Background
-	}
-	clr := b.Color
-	if cur.Color != (color.NRGBA{}) {
-		clr = cur.Color
 	}
 
 	return ToggleButtonLayoutStyle{
@@ -141,7 +132,7 @@ func (b *ToggleButton) Layout(gtx layout.Context, th *theme.Theme) layout.Dimens
 					sz := gtx.Sp(b.IconSize)
 					gtx.Constraints.Min.X = sz
 					gtx.Constraints.Max.X = sz
-					return cur.Icon.Layout(gtx, clr)
+					return cur.Icon.Layout(gtx, txt)
 				})
 			}))
 		}
@@ -150,7 +141,7 @@ func (b *ToggleButton) Layout(gtx layout.Context, th *theme.Theme) layout.Dimens
 			items = append(items, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				lb := material.Label(th.Material(), b.TextSize, cur.Label)
 				lb.Font = b.Font
-				lb.Color = clr
+				lb.Color = txt
 				return lb.Layout(gtx)
 			}))
 		}

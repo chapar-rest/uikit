@@ -7,7 +7,12 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
+	"github.com/chapar-rest/uikit/colors"
 	"github.com/chapar-rest/uikit/theme"
+)
+
+const (
+	TreeComponent = "treeview"
 )
 
 type Tree struct {
@@ -84,28 +89,20 @@ func (t *Tree) Layout(gtx layout.Context, theme *theme.Theme) layout.Dimensions 
 	})
 }
 
-func getBkColor(theme *theme.Theme) (color.NRGBA, color.NRGBA) {
-	// is there a treeview component?
-	treeview, ok := theme.Components["treeview"]
-	if ok {
-		return treeview.Surface, theme.Base.SurfaceHighlight
-	}
-	return theme.Base.Surface, theme.Base.SurfaceHighlight
-}
-
-func makeScrollbarStyle(theme *theme.Theme, scrollbar *widget.Scrollbar) material.ScrollbarStyle {
-	bkColor, _ := getBkColor(theme)
+func makeScrollbarStyle(th *theme.Theme, scrollbar *widget.Scrollbar) material.ScrollbarStyle {
+	fg, bg, _ := th.FgBgTxt(theme.KindSecondary, TreeComponent)
+	hoverFg := colors.Hovered(fg)
 
 	return material.ScrollbarStyle{
 		Scrollbar: scrollbar,
 		Indicator: material.ScrollIndicatorStyle{
-			Color:        theme.Base.Secondary,
-			HoverColor:   theme.Base.Secondary,
+			Color:        fg,
+			HoverColor:   hoverFg,
 			CornerRadius: unit.Dp(0),
 			MinorWidth:   unit.Dp(8),
 		},
 		Track: material.ScrollTrackStyle{
-			Color:        bkColor,
+			Color:        bg,
 			MajorPadding: unit.Dp(2),
 			MinorPadding: unit.Dp(2),
 		},

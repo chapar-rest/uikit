@@ -18,6 +18,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
+	"github.com/chapar-rest/uikit/colors"
 	"github.com/chapar-rest/uikit/icons"
 	"github.com/chapar-rest/uikit/theme"
 )
@@ -120,10 +121,10 @@ func (n *Node) Close() error {
 	return nil
 }
 
-func (n *Node) Layout(gtx layout.Context, theme *theme.Theme) layout.Dimensions {
+func (n *Node) Layout(gtx layout.Context, th *theme.Theme) layout.Dimensions {
 	n.Update(gtx)
 	c := op.Record(gtx.Ops)
-	dims := n.layout(gtx, theme)
+	dims := n.layout(gtx, th)
 	call := c.Stop()
 	defer pointer.PassOp{}.Push(gtx.Ops).Pop()
 
@@ -135,22 +136,22 @@ func (n *Node) droppable() bool {
 	return n.entered && n.dndInited && !n.draggable.Dragging()
 }
 
-func (n *Node) layout(gtx layout.Context, theme *theme.Theme) layout.Dimensions {
+func (n *Node) layout(gtx layout.Context, th *theme.Theme) layout.Dimensions {
 	if len(n.Children) == 0 {
-		return n.rootLayout(gtx, false, theme)
+		return n.rootLayout(gtx, false, th)
 	} else {
 		return Discloser(&n.discloser).Layout(gtx,
 			func(gtx layout.Context) layout.Dimensions {
-				return n.rootLayout(gtx, true, theme)
+				return n.rootLayout(gtx, true, th)
 			},
 			func(gtx layout.Context) layout.Dimensions {
-				return n.detailLayout(gtx, theme)
+				return n.detailLayout(gtx, th)
 			},
 		)
 	}
 }
 
-func (n *Node) draggeBox(gtx layout.Context, theme *theme.Theme) layout.Dimensions {
+func (n *Node) draggeBox(gtx layout.Context, th *theme.Theme) layout.Dimensions {
 	if !n.draggable.Dragging() {
 		return layout.Dimensions{}
 	}
@@ -163,7 +164,7 @@ func (n *Node) draggeBox(gtx layout.Context, theme *theme.Theme) layout.Dimensio
 	macro := op.Record(gtx.Ops)
 	dims := func(gtx layout.Context) layout.Dimensions {
 		return widget.Border{
-			Color:        theme.Base.SurfaceHighlight,
+			Color:        th.Base.SurfaceHighlight,
 			Width:        unit.Dp(1),
 			CornerRadius: unit.Dp(8),
 		}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
@@ -173,14 +174,14 @@ func (n *Node) draggeBox(gtx layout.Context, theme *theme.Theme) layout.Dimensio
 				Left:   unit.Dp(8),
 				Right:  unit.Dp(8),
 			}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return n.Widget(gtx)
+				return n.Widget(gtx, th)
 			})
 		})
 	}(gtx)
 	call := macro.Stop()
 
 	defer clip.UniformRRect(image.Rectangle{Max: dims.Size}, gtx.Dp(unit.Dp(4))).Push(gtx.Ops).Pop()
-	paint.ColorOp{Color: theme.Base.SurfaceHighlight}.Add(gtx.Ops)
+	paint.ColorOp{Color: th.Base.SurfaceHighlight}.Add(gtx.Ops)
 	paint.PaintOp{}.Add(gtx.Ops)
 	defer paint.PushOpacity(gtx.Ops, 0.8).Pop()
 	call.Add(gtx.Ops)
@@ -192,8 +193,9 @@ func (n *Node) hasParent() bool {
 	return n.Parent != nil
 }
 
-func (n *Node) rootLayout(gtx layout.Context, withControl bool, theme *theme.Theme) layout.Dimensions {
-	_, hoverBgColor := getBkColor(theme)
+func (n *Node) rootLayout(gtx layout.Context, withControl bool, th *theme.Theme) layout.Dimensions {
+	_, bg, _ := th.FgBgTxt(theme.KindPrimary, TreeComponent)
+	hoverBgColor := colors.Hovered(bg)
 	var bgColor color.NRGBA
 	if n.click.Hovered() || n.droppable() {
 		bgColor = hoverBgColor
@@ -224,13 +226,13 @@ func (n *Node) rootLayout(gtx layout.Context, withControl bool, theme *theme.The
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				if withControl {
 					return n.discloser.Clickable.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-						return n.controlLayout(gtx, theme)
+						return n.controlLayout(gtx, th)
 					})
 				}
 				return layout.Dimensions{Size: image.Point{X: gtx.Dp(16), Y: gtx.Dp(16)}}
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return n.Widget(gtx)
+				return n.Widget(gtx, th)
 			}),
 		)
 	})
@@ -254,12 +256,13 @@ func (n *Node) rootLayout(gtx layout.Context, withControl bool, theme *theme.The
 			return dims
 		},
 		func(gtx layout.Context) layout.Dimensions {
-			return n.draggeBox(gtx, theme)
+			return n.draggeBox(gtx, th)
 		},
 	)
 }
 
-func (n *Node) controlLayout(gtx layout.Context, theme *theme.Theme) layout.Dimensions {
+func (n *Node) controlLayout(gtx layout.Context, th *theme.Theme) layout.Dimensions {
+	_, _, txt := th.FgBgTxt(theme.KindPrimary, TreeComponent)
 	if len(n.Children) == 0 {
 		return layout.Dimensions{}
 	}
@@ -268,19 +271,19 @@ func (n *Node) controlLayout(gtx layout.Context, theme *theme.Theme) layout.Dime
 	}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		gtx.Constraints.Max.X = gtx.Dp(14)
 		if !n.discloser.Visible() {
-			return icons.ChevronRight.Layout(gtx, theme.Base.Text)
+			return icons.ChevronRight.Layout(gtx, txt)
 		}
-		return icons.ChevronDown.Layout(gtx, theme.Base.Text)
+		return icons.ChevronDown.Layout(gtx, txt)
 	})
 }
 
-func (n *Node) detailLayout(gtx layout.Context, theme *theme.Theme) layout.Dimensions {
-	listStyle := material.List(theme.Material(), n.childrenList)
+func (n *Node) detailLayout(gtx layout.Context, th *theme.Theme) layout.Dimensions {
+	listStyle := material.List(th.Material(), n.childrenList)
 	// hide the detail component scrollbar
 	listStyle.ScrollbarStyle.Indicator.MinorWidth = 0
 	listStyle.ScrollbarStyle.Track.MinorPadding = 0
 	listStyle.ScrollbarStyle.Track.MajorPadding = 0
 	return listStyle.Layout(gtx, len(n.Children), func(gtx layout.Context, i int) layout.Dimensions {
-		return n.Children[i].Layout(gtx, theme)
+		return n.Children[i].Layout(gtx, th)
 	})
 }

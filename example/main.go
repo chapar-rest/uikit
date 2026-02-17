@@ -63,7 +63,7 @@ func loop(w *app.Window) error {
 			Ratio: 0.3,
 			HandleStyle: split.HandleStyle{
 				Color:      th.Base.Border,
-				Width:      unit.Dp(3),
+				Width:      unit.Dp(2),
 				HoverColor: th.Base.Secondary,
 			},
 		},
@@ -87,16 +87,15 @@ func loop(w *app.Window) error {
 	state.actionbar.AddItem(button.IconButton(state.theme, &state.OpenFileClickable, icons.FileInput, theme.KindPrimary))
 	state.actionbar.AddItem(button.IconButton(state.theme, &state.HistoryClickable, icons.History, theme.KindPrimary))
 
-	state.themeToggleClickable = toggle.NewToggleButton(state.theme, []*toggle.State{
-		{
-			Tag:  "dark",
-			Icon: icons.Moon,
-		},
-		{
-			Tag:  "light",
-			Icon: icons.Sun,
-		},
-	})
+	allThemes := []*toggle.State{}
+	for _, th := range themes.GetAllThemes() {
+		allThemes = append(allThemes, &toggle.State{
+			Tag:   th.Id,
+			Label: th.Name,
+		})
+	}
+
+	state.themeToggleClickable = toggle.NewToggleButton(state.theme, theme.KindPrimary, allThemes)
 
 	state.appBar.AddItem(actionbar.ActionBarItemFunc(func(gtx layout.Context, th *theme.Theme) layout.Dimensions {
 		return material.Label(th.Material(), unit.Sp(14), "VOID editor").Layout(gtx)
@@ -194,8 +193,10 @@ func (s *appState) onFileNodeClick(node *treeview.Node) {
 
 	s.openFiles[path] = s.buildFileView(s.theme, path)
 
+	_, _, txt := s.theme.FgBgTxt(theme.KindPrimary, treeview.TreeComponent)
 	t := tabs.NewTab(func(gtx layout.Context, th *theme.Theme) layout.Dimensions {
 		lb := material.Label(th.Material(), unit.Sp(14), s.openFiles[path].Title)
+		lb.Color = txt
 		return lb.Layout(gtx)
 	})
 
@@ -222,12 +223,15 @@ func (s *appState) appLayout(gtx layout.Context) {
 	th := s.theme
 	if s.currentTheme != s.themeToggleClickable.StateTag() {
 		s.currentTheme = s.themeToggleClickable.StateTag()
-		if s.currentTheme == "dark" {
-			th = themes.Dark()
+		if t := themes.GetThemeById(s.currentTheme); t != nil {
+			s.theme = t
+			th = t
 		} else {
-			th = themes.Light()
+			s.theme = themes.Light()
+			th = s.theme
+			s.currentTheme = "light"
+			fmt.Println("theme not found, using light")
 		}
-		s.theme = th
 	}
 
 	paint.Fill(gtx.Ops, th.Base.Surface)
@@ -246,21 +250,21 @@ func (s *appState) appLayout(gtx layout.Context) {
 			})
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return divider.NewDivider(layout.Horizontal, unit.Dp(1)).Layout(gtx, th)
+			return divider.NewDivider(layout.Horizontal, unit.Dp(1), th.Base.SurfaceHighlight).Layout(gtx, th)
 		}),
 		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{
 				Axis: layout.Horizontal,
 			}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					gtx.Constraints.Max.X = gtx.Dp(60)
+					gtx.Constraints.Max.X = gtx.Dp(64)
 					return s.sidebar.Layout(gtx, th)
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return divider.NewDivider(layout.Vertical, unit.Dp(1)).Layout(gtx, th)
+					return divider.NewDivider(layout.Vertical, unit.Dp(1), th.Base.SurfaceHighlight).Layout(gtx, th)
 				}),
 				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-					return s.split.Layout(gtx,
+					return s.split.Layout(gtx, th,
 						func(gtx layout.Context) layout.Dimensions {
 							return layout.Flex{
 								Axis: layout.Vertical,
@@ -271,7 +275,7 @@ func (s *appState) appLayout(gtx layout.Context) {
 									})
 								}),
 								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-									return divider.NewDivider(layout.Horizontal, unit.Dp(1)).Layout(gtx, s.theme)
+									return divider.NewDivider(layout.Horizontal, unit.Dp(1), th.Base.SurfaceHighlight).Layout(gtx, s.theme)
 								}),
 								layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 									return s.tree.Layout(gtx, s.theme)
@@ -334,8 +338,11 @@ func (s *appState) buildFileNode(th *theme.Theme, entry os.DirEntry, parentPath 
 	name := entry.Name()
 	fullPath := filepath.Join(parentPath, name)
 
-	node := treeview.NewNode(fullPath, func(gtx layout.Context) layout.Dimensions {
-		return material.Label(th.Material(), unit.Sp(14), name).Layout(gtx)
+	node := treeview.NewNode(fullPath, func(gtx layout.Context, th *theme.Theme) layout.Dimensions {
+		_, _, txt := th.FgBgTxt(theme.KindPrimary, treeview.TreeComponent)
+		lb := material.Label(th.Material(), unit.Sp(14), name)
+		lb.Color = txt
+		return lb.Layout(gtx)
 	})
 
 	node.OnClickFunc = func(node *treeview.Node) {

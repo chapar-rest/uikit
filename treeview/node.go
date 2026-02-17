@@ -7,6 +7,7 @@ import (
 	"gioui.org/layout"
 	"gioui.org/unit"
 	"gioui.org/widget"
+	"github.com/chapar-rest/uikit/theme"
 )
 
 const (
@@ -14,10 +15,12 @@ const (
 	NodeMIME = "chapar-uikit/treeview/node"
 )
 
+type NodeWidget func(gtx layout.Context, th *theme.Theme) layout.Dimensions
+
 type Node struct {
 	ID string
 
-	Widget    layout.Widget
+	Widget    NodeWidget
 	Parent    *Node
 	Collapsed bool
 
@@ -40,7 +43,7 @@ type Node struct {
 	OnClickFunc       func(node *Node)
 }
 
-func NewNode(id string, w layout.Widget) *Node {
+func NewNode(id string, w NodeWidget) *Node {
 	return &Node{
 		ID:        id,
 		Widget:    w,

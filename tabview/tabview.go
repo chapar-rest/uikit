@@ -213,7 +213,7 @@ func (tv *TabView) Layout(gtx layout.Context, th *theme.Theme) layout.Dimensions
 			} else {
 				gtx.Constraints.Min.Y = max(tv.headerSize, tv.bodySize)
 			}
-			return divider.NewDivider(tv.Axis, unit.Dp(0.5)).Layout(gtx, th)
+			return divider.NewDivider(tv.Axis, unit.Dp(0.5), th.Base.SurfaceHighlight).Layout(gtx, th)
 		}),
 
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
