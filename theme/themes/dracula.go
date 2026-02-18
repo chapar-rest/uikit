@@ -16,6 +16,7 @@ func Dracula() *theme.Theme {
 			Text:             colors.FromHex("f8f8f2"), // hsl(60,30%,96%)
 			TextSubtle:       colors.FromHex("999db2"), // hsl(232,14%,65%)
 			TextSubtlest:     colors.FromHex("6e7291"), // hsl(232,14%,50%)
+			Border:           colors.FromHex("343746"), // hsl(230,15%,24%)
 			Primary:          colors.FromHex("bf95f9"), // hsl(265,89%,78%)
 			Secondary:        colors.FromHex("6071a4"), // hsl(225,27%,51%)
 			Info:             colors.FromHex("8be8fd"), // hsl(191,97%,77%)
